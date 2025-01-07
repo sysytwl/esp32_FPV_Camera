@@ -1,0 +1,169 @@
+/*
+ * This is the (currently unofficial) 802.11 raw frame TX API,
+ * defined in esp32-wifi-lib's libnet80211.a/ieee80211_output.o
+ *
+ * This declaration is all you need for using esp_wifi_80211_tx in your own application.
+ */
+//esp_err_t esp_wifi_80211_tx(wifi_interface_t ifx, const void *buffer, int len, bool en_sys_seq);
+
+#include <Arduino.h>
+#include "esp_wifi.h" // wifi 2.4ghz
+#include "esp_camera.h" // camera
+
+// Camera pin configuration
+#define PWDN_GPIO_NUM     32
+#define RESET_GPIO_NUM    -1
+#define XCLK_GPIO_NUM      0
+#define SIOD_GPIO_NUM     26
+#define SIOC_GPIO_NUM     27
+
+#define Y9_GPIO_NUM       35
+#define Y8_GPIO_NUM       34
+#define Y7_GPIO_NUM       39
+#define Y6_GPIO_NUM       36
+#define Y5_GPIO_NUM       21
+#define Y4_GPIO_NUM       19
+#define Y3_GPIO_NUM       18
+#define Y2_GPIO_NUM        5
+#define VSYNC_GPIO_NUM    25
+#define HREF_GPIO_NUM     23
+#define PCLK_GPIO_NUM     22
+
+// 4 for flash led or 33 for normal led
+#define LED_GPIO_NUM       4
+
+#include "RS-FEC.h"
+
+// save to sd card 
+// #include "driver/sdmmc_host.h"
+// #include "driver/sdmmc_defs.h"
+// #include "sdmmc_cmd.h"
+// #include "esp_vfs_fat.h"
+
+// static void init_sdcard()
+// {
+//   esp_err_t ret = ESP_FAIL;
+//   sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+//   sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+//   esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+//       .format_if_mount_failed = false,
+//       .max_files = 3,
+//   };
+//   sdmmc_card_t *card;
+
+//   ESP_LOGI(TAG, "Mounting SD card...");
+//   ret = esp_vfs_fat_sdmmc_mount("/sdcard", &host, &slot_config, &mount_config, &card);
+
+//   if (ret == ESP_OK)
+//   {
+//     ESP_LOGI(TAG, "SD card mount successfully!");
+//   }
+//   else
+//   {
+//     ESP_LOGE(TAG, "Failed to mount SD card VFAT filesystem. Error: %s", esp_err_to_name(ret));
+//   }
+// }
+
+
+uint8_t data_raw[] = {
+	0x08, 0x00,							// 0-1: data frame
+	0x00, 0x00,							// 2-3: Duration
+	0xff, 0xff, 0xff, 0xff, 0xff, 0xff,	// 4-9: Destination address (broadcast)
+	0x8c, 0xde, 0xf9, 0xe1, 0xe7, 0xe2,	// 10-15: Source address
+	0x8c, 0xde, 0xf9, 0xe1, 0xe7, 0xe2,	// 16-21: BSSID
+	0x00, 0x01,							// 22-23: Sequence / fragment number
+	0x00, 0x00, 0x00,                   // dsap ssap ctrl
+	//0x74, 0x65, 0x73, 0x74,           //   -1500: Data
+};
+#define data_raw_len sizeof(data_raw)
+#define ctrl_offset 26
+#define ssap_offset 25
+#define dsap_offset 24
+
+void setup(){
+	#include "soc/soc.h"
+	#include "soc/rtc_cntl_reg.h"
+	// Turn-off the 'brownout detector'
+	WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
+
+	camera_config_t config;
+		config.pin_d0 = Y2_GPIO_NUM;
+		config.pin_d1 = Y3_GPIO_NUM;
+		config.pin_d2 = Y4_GPIO_NUM;
+		config.pin_d3 = Y5_GPIO_NUM;
+		config.pin_d4 = Y6_GPIO_NUM;
+		config.pin_d5 = Y7_GPIO_NUM;
+		config.pin_d6 = Y8_GPIO_NUM;
+		config.pin_d7 = Y9_GPIO_NUM;
+		config.pin_xclk = XCLK_GPIO_NUM;
+		config.pin_pclk = PCLK_GPIO_NUM;
+		config.pin_vsync = VSYNC_GPIO_NUM;
+		config.pin_href = HREF_GPIO_NUM;
+		config.pin_sccb_sda = SIOD_GPIO_NUM;
+		config.pin_sccb_scl = SIOC_GPIO_NUM;
+		config.pin_pwdn = PWDN_GPIO_NUM;
+		config.pin_reset = RESET_GPIO_NUM;
+
+		config.ledc_channel = LEDC_CHANNEL_0;
+		config.ledc_timer = LEDC_TIMER_0;
+		config.xclk_freq_hz = 24000000;
+
+		config.frame_size = FRAMESIZE_VGA;
+		config.pixel_format = PIXFORMAT_JPEG;
+		config.jpeg_quality = 17; // 0-63 lower number means higher quality
+		config.fb_count = 2; // if more than one, i2s runs in continuous mode. Use only with JPEG
+
+		config.grab_mode = CAMERA_GRAB_LATEST;
+		config.fb_location = CAMERA_FB_IN_DRAM; //psram
+
+
+    ESP_ERROR_CHECK(esp_camera_init(&config));
+
+	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+    //ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
+	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+	ESP_ERROR_CHECK(esp_wifi_config_80211_tx_rate(WIFI_IF_AP, WIFI_PHY_RATE_11M_S));
+	ESP_ERROR_CHECK(esp_wifi_start());
+	ESP_ERROR_CHECK(esp_wifi_set_channel(6, WIFI_SECOND_CHAN_NONE));
+	ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+	//ESP_ERROR_CHECK(esp_wifi_set_max_tx_power(84));
+}
+
+uint8_t test[] = {0x74, 0x65, 0x73, 0x74};
+
+void loop(){
+	camera_fb_t* pic = esp_camera_fb_get();
+	if (!pic) {
+        log_e("Camera capture failed");
+	} else {
+		log_d("img size: %d", pic->len);
+
+		size_t img_pointer = 0;
+		data_raw[ssap_offset] = 0;
+		data_raw[ctrl_offset] = 0;
+
+		while (img_pointer < pic->len){
+			size_t left_size = pic->len - img_pointer;
+			size_t img_pack_size = 1470;
+			if (left_size <= 1470) {
+				img_pack_size = left_size;
+				data_raw[ctrl_offset] = 1;
+			};
+			uint8_t* Image_data_pack = new uint8_t[data_raw_len + img_pack_size];
+
+			memcpy(Image_data_pack, data_raw, data_raw_len);
+			memcpy(Image_data_pack + data_raw_len, pic->buf + img_pointer, img_pack_size);
+			esp_err_t debug_info = esp_wifi_80211_tx(WIFI_IF_AP, Image_data_pack, data_raw_len + img_pack_size, false);
+
+			delete[] Image_data_pack;
+			img_pointer += 1470;
+			data_raw[ssap_offset] += 1;
+			log_d("send_pack: %d, left size: %d, TX send: %d",data_raw_len + img_pack_size, left_size - img_pack_size, debug_info);
+		}
+		data_raw[dsap_offset] += 1;
+	}
+	esp_camera_fb_return(pic);
+	while(1);
+	//delayMicroseconds(30000); // must larger than 50us /100us
+}

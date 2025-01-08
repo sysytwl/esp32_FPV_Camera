@@ -239,8 +239,9 @@ void setup(){
     ESP_ERROR_CHECK(esp_camera_init(&config));
 
 
-    //fec
+    //FEC init
     fec.init_fec();
+    fec.fec_new(6, 8, &fec.fec_type);
 }
 
 void loop(){

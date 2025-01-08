@@ -46,7 +46,7 @@ static bool s_ovf_flag = false;
 
 static const uint32_t JPEG_SOI_MARKER = 0xFFD8FF;  // written in little-endian for esp32
 static const uint16_t JPEG_EOI_MARKER = 0xD9FF;  // written in little-endian for esp32
-size_t (*data_available_callback)(void * cam_obj,const uint8_t* data, size_t count, bool last);
+void (*data_available_callback)(void * cam_obj,const uint8_t* data, size_t count, bool last);
 
 static int cam_verify_jpeg_soi(const uint8_t *inbuf, uint32_t length){
     for (uint32_t i = 0; i < length; i++) {
@@ -73,10 +73,11 @@ static int cam_verify_jpeg_eoi(const uint8_t *inbuf, uint32_t length){
     return -1;
 }
 
-//Copy fram from DMA dma_buffer to fram dma_buffer TODO: bad global variable
-    int cnt = 0;
-    int frame_pos = 0;
-    cam_event_t cam_event = 0;
+//Copy fram from DMA dma_buffer to fram dma_buffer //TODO: bad global variable
+int cnt = 0;
+int frame_pos = 0;
+uint8_t *buf = (uint8_t *)heap_caps_malloc(sizeof(uint8_t) * cam_obj->dma_half_buffer_size/4, MALLOC_CAP_8BIT);
+cam_event_t cam_event = 0;
 static void cam_task(void *arg){
     // find the end marker for JPEG. Data after that can be discarded
     int offset_e = cam_verify_jpeg_eoi(dma_buffer->buf, dma_buffer->len);
@@ -94,24 +95,37 @@ static void cam_task(void *arg){
         return cam_take(timeout - ticks_spent);//recurse!!!!
     }
 
+    xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
+    switch (cam_obj->state) {
+        case CAM_STATE_IDLE: {
+            if (cam_event == CAM_VSYNC_EVENT) {
+                cam_obj->frames[*frame_pos].fb.timestamp.tv_sec = (uint64_t)esp_timer_get_time() / 1000000UL;
+                cam_obj->frames[frame_pos].fb.len = 0;
+                cam_obj->state = CAM_STATE_READ_BUF;
 
-    camera_fb_t * frame_buffer_event = &cam_obj->frames[frame_pos].fb;
-    size_t pixels_per_dma = (cam_obj->dma_half_buffer_size * cam_obj->fb_bytes_per_pixel) / (cam_obj->dma_bytes_per_item * cam_obj->in_bytes_per_pixel);
-
-        if (cam_event == CAM_IN_SUC_EOF_EVENT) {
-            frame_buffer_event->len += ll_cam_memcpy(cam_obj, &frame_buffer_event->buf[frame_buffer_event->len], &cam_obj->dma_buffer[(cnt % cam_obj->dma_half_buffer_cnt) * cam_obj->dma_half_buffer_size], cam_obj->dma_half_buffer_size);
-
-            frame_buffer_event->len += data_available_callback((void *)cam_obj, &cam_obj->dma_buffer[(cnt % cam_obj->dma_half_buffer_cnt) * cam_obj->dma_half_buffer_size], cam_obj->dma_half_buffer_size, false);
-                
-            //Check for JPEG SOI in the first buffer. stop if not found
-            if (cnt == 0 && cam_verify_jpeg_soi(frame_buffer_event->buf, frame_buffer_event->len) != 0) {
-                ll_cam_stop(cam_obj);
-                cam_obj->state = CAM_STATE_IDLE;
+                cnt = 0;
             }
+        }
+        break;
 
-            cnt++;
+        case CAM_STATE_READ_BUF: {
+            if (cam_event == CAM_IN_SUC_EOF_EVENT) {
+                camera_fb_t * frame_buffer_event = &cam_obj->frames[frame_pos].fb;
+                size_t pixels_per_dma = (cam_obj->dma_half_buffer_size * cam_obj->fb_bytes_per_pixel) / (cam_obj->dma_bytes_per_item * cam_obj->in_bytes_per_pixel);
 
-        } else if (cam_event == CAM_VSYNC_EVENT) {
+                size_t data_len = ll_cam_memcpy(cam_obj, buf, &cam_obj->dma_buffer[(cnt % cam_obj->dma_half_buffer_cnt) * cam_obj->dma_half_buffer_size], cam_obj->dma_half_buffer_size);
+                
+                cnt++;
+
+                //Check for JPEG SOI in the first buffer. stop if not found
+                if (cnt == 0 && cam_verify_jpeg_soi(frame_buffer_event->buf, frame_buffer_event->len) != 0) { //missed the SOI marker, skip the frame
+                    ll_cam_stop(cam_obj);
+                    cam_obj->state = CAM_STATE_IDLE;
+                } else {
+                    data_available_callback((void *)cam_obj, buf, data_len, false);
+                };
+
+            } else if (cam_event == CAM_VSYNC_EVENT) {//Stop DMA and get the data
             ll_cam_stop(cam_obj);
 
             if (cnt || !cam_obj->jpeg_mode || cam_obj->psram_mode) {
@@ -176,10 +190,27 @@ static void cam_task(void *arg){
             }
             cnt = 0;
         }
-
+        }
+        break;
+    }
 
 
     vTaskDelete(NULL); // end of the task
+}
+
+void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t cam_event, BaseType_t * HPTaskAwoken){
+    if (xQueueSendFromISR(cam->event_queue, (void *)&cam_event, HPTaskAwoken) != pdTRUE) {
+        ll_cam_stop(cam);
+        cam->state = CAM_STATE_IDLE;
+        ESP_CAMERA_ETS_PRINTF(DRAM_STR("cam_hal: EV-%s-OVF\r\n"), cam_event==CAM_IN_SUC_EOF_EVENT ? DRAM_STR("EOF") : DRAM_STR("VSYNC"));
+    }
+#if CONFIG_CAMERA_CORE0
+    xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle, 0);
+#elif CONFIG_CAMERA_CORE1
+    xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle, 1);
+#else
+    xTaskCreate(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle);
+#endif
 }
 
 static lldesc_t * allocate_dma_descriptors(uint32_t count, uint16_t size, uint8_t * buffer){
@@ -284,8 +315,25 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
     ret = cam_dma_config(config);
     CAM_CHECK_GOTO(ret == ESP_OK, "cam_dma_config failed", err);
 
+    size_t queue_size = cam_obj->dma_half_buffer_cnt - 1;
+    if (queue_size == 0) {
+        queue_size = 1;
+    }
+    cam_obj->event_queue = xQueueCreate(queue_size, sizeof(cam_event_t));
+    CAM_CHECK_GOTO(cam_obj->event_queue != NULL, "event_queue create failed", err);
+
     ret = ll_cam_init_isr(cam_obj);
     CAM_CHECK_GOTO(ret == ESP_OK, "cam intr alloc failed", err);
+
+// #if CONFIG_CAMERA_CORE0
+//     xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle, 0);
+// #elif CONFIG_CAMERA_CORE1
+//     xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle, 1);
+// #else
+//     xTaskCreate(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle);
+// #endif
+    cam_obj->state = CAM_STATE_IDLE;
+    xQueueReset(cam_obj->event_queue);
 
     data_available_callback=config->data_available_callback; //assign external call back, blocking
 

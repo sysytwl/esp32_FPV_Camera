@@ -80,10 +80,10 @@ typedef struct {
     uint32_t frame_copy_cnt;
 
     //for JPEG mode
-    lldesc_t *dma;
-    uint8_t  *dma_buffer;
+    lldesc_t *dma; //DMA descriptors
+    uint8_t  *dma_buffer; //DMA buffer
 
-    //QueueHandle_t event_queue;
+    QueueHandle_t event_queue;
     //QueueHandle_t frame_buffer_queue;
     //TaskHandle_t task_handle;
     intr_handle_t cam_intr_handle;

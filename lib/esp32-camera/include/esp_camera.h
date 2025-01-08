@@ -119,11 +119,11 @@ typedef struct {
     framesize_t frame_size;         /*!< Size of the output image: FRAMESIZE_ + QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA  */
 
     int jpeg_quality;               /*!< Quality of JPEG output. 0-63 lower means higher quality  */
-    size_t fb_count;                /*!< Number of frame buffers to be allocated. If more than one, then each frame will be acquired (double speed)  */
+    //size_t fb_count;                /*!< Number of frame buffers to be allocated. If more than one, then each frame will be acquired (double speed)  */
 
     int sccb_i2c_port;              /*!< If pin_sccb_sda is -1, use the already configured I2C bus by number */
 
-    size_t (*data_available_callback)(void * cam_obj,const uint8_t* data, size_t count, bool last); // DMA call back function, Non blocking intterupt
+    void (*data_available_callback)(void * cam_obj,const uint8_t* data, size_t count, bool last); // DMA call back function, Non blocking intterupt
 
 } camera_config_t;
 
@@ -151,7 +151,7 @@ typedef struct {
     int (*init)(sensor_t *sensor);
 } sensor_func_t;
 
-static camera_state_t *s_state = NULL;
+//static camera_state_t *s_state = NULL;
 /************************************************************************/
 
 #define ESP_ERR_CAMERA_BASE 0x20000

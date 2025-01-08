@@ -83,6 +83,8 @@ typedef struct {
     lldesc_t *dma; //DMA descriptors
     uint8_t  *dma_buffer; //DMA buffer
 
+    uint8_t *buf;
+
     QueueHandle_t event_queue;
     //QueueHandle_t frame_buffer_queue;
     //TaskHandle_t task_handle;
@@ -100,7 +102,7 @@ typedef struct {
     //uint32_t frame_cnt;
     uint32_t recv_size;
     //bool swap_data;
-    bool psram_mode;
+    bool psram_mode;  //s3 DMA can access psram
 
     //for RGB/YUV modes
     uint16_t width;

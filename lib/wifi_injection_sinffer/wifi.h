@@ -14,8 +14,8 @@
 
 #include "packets.h"
 #include "stdint.h"
-//#define WIFI_AP
 
+//#define WIFI_AP
 #if defined WIFI_AP
     #define ESP_WIFI_MODE WIFI_MODE_AP
     #define ESP_WIFI_IF WIFI_IF_AP
@@ -118,8 +118,7 @@ IRAM_ATTR void packet_received_cb(void* buf, wifi_promiscuous_pkt_type_t type)
     //s_stats.wlan_data_received += len;
     //s_stats.wlan_data_sent += 1;
 
-    if (len <= WLAN_IEEE_HEADER_SIZE)
-    {
+    if (len <= WLAN_IEEE_HEADER_SIZE)    {
         LOG("WLAN receive header error");
         s_stats.wlan_error_count++;
         return;

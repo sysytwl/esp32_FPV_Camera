@@ -148,7 +148,7 @@
 ////////////////////////////////////////////////////////////////////////////////////
 
 
-extern bool isHQDVRMode();
+//extern bool isHQDVRMode();
 
 
 
@@ -185,35 +185,9 @@ extern bool isHQDVRMode();
 
 class FPV_Cam_Config {
 public:
-    struct Camera_Config{
-        int xclk_freq_hz = CAM_XCLK;
-
-        int pin_sccb_sda = SIOD_GPIO_NUM;
-        int pin_sccb_scl = SIOC_GPIO_NUM;
-
-        int pin_d7 = Y9_GPIO_NUM;
-        int pin_d6 = Y8_GPIO_NUM;
-        int pin_d5 = Y7_GPIO_NUM;
-        int pin_d4 = Y6_GPIO_NUM;
-        int pin_d3 = Y5_GPIO_NUM;
-        int pin_d2 = Y4_GPIO_NUM;
-        int pin_d1 = Y3_GPIO_NUM;
-        int pin_d0 = Y2_GPIO_NUM;
-
-        int pin_vsync = VSYNC_GPIO_NUM;
-        int pin_href = HREF_GPIO_NUM;
-        int pin_pclk = PCLK_GPIO_NUM;
-        int pin_xclk = XCLK_GPIO_NUM;
-
-        int pin_reset = RESET_GPIO_NUM;
-        int pin_pwdn = PWDN_GPIO_NUM;
-
-        framesize_t frame_size = FRAMESIZE_CIF;
-        int jpeg_quality = 63;//start from lowest quality to decrease pressure 
-    } camera_config;
 
     struct WiFi_Config{
-        wifi_mode_t wifi_mode = ESP_WIFI_MODE;
+        wifi_mode_t wifi_mode = WIFI_MODE_AP;
         wifi_phy_rate_t wifi_rate = WIFI_PHY_RATE_11M_L;
         uint8_t wifi_channel = 13;
     } wifi_config;

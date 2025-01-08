@@ -116,12 +116,6 @@ private:
   static gf gf_log[256];  /* poly->index form conversion table    */
   static gf inverse[256]; /* inverse of field elem.               */ /* inv[\alpha**i]=\alpha**(GF_SIZE-i-1) */
 
-  struct fec_t {
-    unsigned long magic;
-    unsigned short k, n;                     /* parameters of the code */
-    gf* enc_matrix;
-  };
-
   /*
   * gf_mul(x,y) multiplies two numbers.  It is much faster to use a
   * multiplication table.
@@ -141,7 +135,7 @@ private:
   * Primitive polynomials - see Lin & Costello, Appendix A,
   static const char * const Pp;
   */
-  static const char Pp[10] = "101110001";
+  const char * const Pp = "101110001";
 
   /*
   * modnn(x) computes x % GF_SIZE, where GF_SIZE is 2**GF_BITS - 1,
@@ -166,7 +160,7 @@ private:
   /*
   * initialize the data structures used for computations in GF.
   */
-  static void generate_gf (void) {
+  void generate_gf (void) {
     int i;
     gf mask;
 
@@ -506,6 +500,12 @@ void build_decode_matrix_into_space(const fec_t*restrict const code, const unsig
 
 
 public:
+  struct fec_t {
+    unsigned long magic;
+    unsigned short k, n;                     /* parameters of the code */
+    gf* enc_matrix;
+  };
+
   void init_fec (void) {
     if (fec_initialized == 0) {
       generate_gf();
@@ -548,10 +548,10 @@ public:
 
   void fec_encode_block(const fec_t* code, const gf*restrict const*restrict const src, gf*restrict const fec, const unsigned*restrict const block_nums, int fec_block_index, size_t sz) {
       unsigned char j;
-      size_t k;
+      //size_t k;
       unsigned fecnum;
       const gf* p;
-      int i;
+      //int i;
 
       fecnum=block_nums[fec_block_index];
       assert (fecnum >= code->k);

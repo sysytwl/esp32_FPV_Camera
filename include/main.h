@@ -177,27 +177,28 @@
 #include <Arduino.h>
 #include <nvs_flash.h>
 #include <nvs.h>
-#include "wifi.h"
-#include "esp_camera.h"
-#include "config.h"
+
+//#include "wifi.h"
+
+//#include "config.h"
 
 
 
-class FPV_Cam_Config {
-public:
+// class FPV_Cam_Config {
+// public:
 
-    struct WiFi_Config{
-        wifi_mode_t wifi_mode = WIFI_MODE_AP;
-        wifi_phy_rate_t wifi_rate = WIFI_PHY_RATE_11M_L;
-        uint8_t wifi_channel = 13;
-    } wifi_config;
+//     struct WiFi_Config{
+//         wifi_mode_t wifi_mode = WIFI_MODE_AP;
+//         wifi_phy_rate_t wifi_rate = WIFI_PHY_RATE_11M_L;
+//         uint8_t wifi_channel = 13;
+//     } wifi_config;
     
-    struct Pin_Config{
+//     struct Pin_Config{
 
-    } pin_config;
+//     } pin_config;
 
-    struct FEC_Config{
+//     struct FEC_Config{
 
-    } fec_config;
+//     } fec_config;
 
-} fpv_cam_config_class;
+// } fpv_cam_config_class;

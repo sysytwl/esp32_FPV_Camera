@@ -1,37 +1,42 @@
-#include "esp_event.h"
-#include "esp_wifi.h"
-#include <driver/adc.h>
-#include "esp_adc_cal.h"
-#include "esp_wifi_types.h"
-#include "driver/sdmmc_host.h"
-#include "driver/sdmmc_defs.h"
-#include "sdmmc_cmd.h"
-#include "esp_vfs_fat.h"
+// #include "esp_event.h"
+// #include "esp_wifi.h"
+// #include <driver/adc.h>
+// #include "esp_adc_cal.h"
+// #include "esp_wifi_types.h"
+// #include "driver/sdmmc_host.h"
+// #include "driver/sdmmc_defs.h"
+// #include "sdmmc_cmd.h"
+// #include "esp_vfs_fat.h"
 
-#include "esp_heap_caps.h"
-#include "esp_task_wdt.h"
-#include "esp_private/wifi.h"
-#include "esp_task_wdt.h"
-#include "esp_timer.h"
+// #include "esp_heap_caps.h"
+// #include "esp_task_wdt.h"
+// #include "esp_private/wifi.h"
+// #include "esp_task_wdt.h"
+// #include "esp_timer.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "driver/uart.h"
-#include <unistd.h>
-#include <fcntl.h>
-#include "esp_random.h"
+// #include "freertos/FreeRTOS.h"
+// #include "freertos/queue.h"
+// #include "freertos/task.h"
+// #include "freertos/semphr.h"
+// #include "driver/uart.h"
+// #include <unistd.h>
+// #include <fcntl.h>
+// #include "esp_random.h"
 
-#include "fec_codec.h"
-#include "packets.h"
-#include "safe_printf.h"
-#include "structures.h"
-#include "crc.h"
-#include "driver/gpio.h"
+// #include "fec_codec.h"
+// #include "packets.h"
+// #include "safe_printf.h"
+// #include "structures.h"
+// #include "crc.h"
+// #include "driver/gpio.h"
+// #include "queue.h"
+// #include "circular_buffer.h"
+
 #include "main.h"
-#include "queue.h"
-#include "circular_buffer.h"
+#include "config.h"
+#include "esp_camera.h"
+
+#include "fec.h"
 
 //#include "osd.h"
 //#include "msp.h"
@@ -65,7 +70,7 @@
 static uint8_t s_video_part_index = 0;
 //static bool s_video_frame_started = false;
 //static size_t s_video_full_frame_size = 0;
-static uint8_t s_osdUpdateCounter = 0;
+//static uint8_t s_osdUpdateCounter = 0;
 //static bool s_lastByte_ff = false;
 
 //static int s_actual_capture_fps = 0;
@@ -77,6 +82,9 @@ static int s_quality = 20;
 //static float s_quality_framesize_K3 = 1;
 //static int s_max_frame_size = 0;
 //static int s_sharpness = 20;
+
+
+ZFE_FEC fec;
 
 
 
@@ -122,6 +130,7 @@ IRAM_ATTR void camera_data_available(void * cam_obj, const uint8_t* data, size_t
     //     applyAdaptiveQuality();
     // }
 
+    fec.fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, m_descriptor.mtu);
 
 
 #ifdef DVR_SUPPORT
@@ -138,26 +147,26 @@ IRAM_ATTR void camera_data_available(void * cam_obj, const uint8_t* data, size_t
 #endif
 
     if(last){//note: can occur multiple times during frame  ,   end of frame - send leftover
-        send_air2ground_video_packet(true);
+        //send_air2ground_video_packet(true);
 
         //recalculateFrameSizeQualityK(s_video_full_frame_size);
         applyAdaptiveQuality();
 
-        s_stats.fec_spin_count += s_fec_spin_count;
-        s_fec_spin_count = 0;
+        //s_stats.fec_spin_count += s_fec_spin_count;
+        //s_fec_spin_count = 0;
 
-        handle_ground2air_config_packetEx2(false);
-        if (!g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15))){
-            send_air2ground_osd_packet();
-            s_osdUpdateCounter = 0;
-        }
+        //handle_ground2air_config_packetEx2(false);
+        //if (!g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15))){
+        //    send_air2ground_osd_packet();
+        //    s_osdUpdateCounter = 0;
+        //}
 
 #ifdef UART_MAVLINK
         send_air2ground_data_packet();
 #endif
 
     } else {
-        send_air2ground_video_packet(false);
+        //send_air2ground_video_packet(false);
         s_video_part_index++;
     }
 
@@ -231,7 +240,7 @@ void setup(){
 
 
     //fec
-    //setup_fec(fec_k, fec_n, s_ground2air_config_packet.fec_codec_mtu, add_to_wlan_outgoing_queue,add_to_wlan_incoming_queue);
+    fec.init_fec();
 }
 
 void loop(){

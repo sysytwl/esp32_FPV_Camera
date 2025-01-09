@@ -282,6 +282,9 @@ int getBandwidthForRate(WIFI_Rate rate){
     return WifiRateBandwidth[(int)rate];
 }
 
+static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
+static float s_quality_framesize_K2 = 1;
+static float s_quality_framesize_K3 = 1;
 int calculateAdaptiveQualityValue(){
     int quality1 = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
     if ( quality1 < 8) quality1 = 8;

@@ -77,9 +77,7 @@ static uint8_t s_video_part_index = 0;
 //static int s_actual_capture_fps_expected = 0;
 
 static int s_quality = 20;
-//static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
-//static float s_quality_framesize_K2 = 1;
-//static float s_quality_framesize_K3 = 1;
+
 //static int s_max_frame_size = 0;
 //static int s_sharpness = 20;
 
@@ -93,7 +91,8 @@ void applyAdaptiveQuality(){
     s->set_quality(s, s_quality); 
 }
 
-
+#define coding_k 6
+#define coding_n 8
 
 /* 
 'bool last' does not mark last JPEG block reliably.
@@ -130,8 +129,14 @@ IRAM_ATTR void camera_data_available(void * cam_obj, const uint8_t* data, size_t
     //     applyAdaptiveQuality();
     // }
 
-    fec.fec_encode_block(m_fec, m_encoder.fec_src_ptrs.data(), fec_dst_ptr, BLOCK_NUMS + m_descriptor.coding_k, i, m_descriptor.mtu);
 
+    //the amount of packets that need decoding is the smallest of:
+    // 1. Block size (coding_k)
+    // 2. Fec packets (coding_n - coding_k)
+    uint8_t* fec_dst_ptr = new uint8_t[count];
+    for (int i = 0; i < coding_n - coding_k; i++){
+        fec.fec_encode_block(&fec.fec_type, data, fec_dst_ptr, BLOCK_NUMS + 6, i, count);
+    };
 
 #ifdef DVR_SUPPORT
     if (s_air_record){

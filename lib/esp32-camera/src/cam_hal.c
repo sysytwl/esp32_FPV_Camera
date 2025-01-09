@@ -181,7 +181,7 @@ static esp_err_t cam_dma_config(const camera_config_t *config){
     cam_obj->dma_buffer = NULL;
     cam_obj->dma = NULL;
 
-    uint8_t dma_align = 0;
+    //uint8_t dma_align = 0;
     if (cam_obj->psram_mode) { //for s3 which the dma can access psram
         // dma_align = ll_cam_get_dma_align(cam_obj);
         // if (cam_obj->fb_size < cam_obj->recv_size) {
@@ -261,13 +261,13 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
     ret = ll_cam_init_isr(cam_obj);
     CAM_CHECK_GOTO(ret == ESP_OK, "cam intr alloc failed", err);
 
-#if CONFIG_CAMERA_CORE0
+// #if CONFIG_CAMERA_CORE0
     xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, NULL, 0);
-#elif CONFIG_CAMERA_CORE1
-    xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, NULL, 1);
-#else
-    xTaskCreate(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle);
-#endif
+// #elif CONFIG_CAMERA_CORE1
+//     xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, NULL, 1);
+// #else
+//     xTaskCreate(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle);
+// #endif
 
     data_available_callback=config->data_available_callback; //assign external call back, blocking
 

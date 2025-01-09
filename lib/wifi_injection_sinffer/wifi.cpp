@@ -1,9 +1,7 @@
-#include "main.h"
-
 #include "wifi.h"
 #include "esp_log.h"
 #include "structures.h"
-#include "fec_codec.h"
+//#include "fec_codec.h"
 #include "crc.h"
 #include "lwip/inet.h"
 

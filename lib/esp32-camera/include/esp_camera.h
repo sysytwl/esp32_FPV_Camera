@@ -151,7 +151,7 @@ typedef struct {
     int (*init)(sensor_t *sensor);
 } sensor_func_t;
 
-//static camera_state_t *s_state = NULL;
+static camera_state_t *s_state = NULL;
 /************************************************************************/
 
 #define ESP_ERR_CAMERA_BASE 0x20000

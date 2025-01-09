@@ -30,6 +30,10 @@ static const char* TAG = "sccb";
 #define portTICK_RATE_MS portTICK_PERIOD_MS
 #endif
 
+#ifndef CONFIG_SCCB_CLK_FREQ
+#define CONFIG_SCCB_CLK_FREQ 100000  // Define a default value if not defined
+#endif
+
 #define SCCB_FREQ               CONFIG_SCCB_CLK_FREQ  /*!< I2C master frequency*/
 #define WRITE_BIT               I2C_MASTER_WRITE      /*!< I2C master write */
 #define READ_BIT                I2C_MASTER_READ       /*!< I2C master read */

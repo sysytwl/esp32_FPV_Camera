@@ -435,9 +435,8 @@ void ZFE_FEC::fec_new(unsigned short k, unsigned short n, fec_t *retval){
   unsigned row, col;
   gf *p, *tmp_m;
 
-
   if (fec_initialized == 0)
-      init_fec ();
+    init_fec ();
 
   if (( n < 1 ) || ( k < 1 )) return;
 

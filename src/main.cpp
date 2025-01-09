@@ -1,5 +1,5 @@
 // #include "esp_event.h"
-// #include "esp_wifi.h"
+// 
 // #include <driver/adc.h>
 // #include "esp_adc_cal.h"
 // #include "esp_wifi_types.h"
@@ -133,9 +133,9 @@ IRAM_ATTR void camera_data_available(void * cam_obj, const uint8_t* data, size_t
     //the amount of packets that need decoding is the smallest of:
     // 1. Block size (coding_k)
     // 2. Fec packets (coding_n - coding_k)
-    uint8_t* fec_dst_ptr = new uint8_t[count];
+    uint8_t* fec_dst_ptr = new uint8_t[count * (coding_n - coding_k)];
     for (int i = 0; i < coding_n - coding_k; i++){
-        fec.fec_encode_block(&fec.fec_type, data, fec_dst_ptr, BLOCK_NUMS + 6, i, count);
+        fec.fec_encode_block(&fec.fec_type, data, fec_dst_ptr + (count * i), BLOCK_NUMS + coding_k, i, count);
     };
 
 #ifdef DVR_SUPPORT
@@ -195,25 +195,7 @@ void setup(){
     // }
     // nvs_close(fpv_cam_config);
 
-    //setup_wifi
-    // wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    // ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-    // ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-    // ESP_ERROR_CHECK(esp_wifi_set_mode(ESP_MODE_AP));
-    // ESP_ERROR_CHECK(esp_wifi_config_80211_tx_rate(ESP_WIFI_IF, WIFI_PHY_RATE_11M_L));
-    // ESP_ERROR_CHECK(esp_wifi_start());
-    // ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-    // //ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20 ));
-    // ESP_ERROR_CHECK(esp_wifi_set_channel(13, WIFI_SECOND_CHAN_NONE));
 
-    // wifi_promiscuous_filter_t filter = 
-    // {
-    //     .filter_mask = WIFI_PROMIS_FILTER_MASK_DATA
-    // };
-    // ESP_ERROR_CHECK(esp_wifi_set_promiscuous_filter(&filter));
-    // ESP_ERROR_CHECK(esp_wifi_set_promiscuous_ctrl_filter(&filter));
-    // ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(packet_received_cb));
-    // ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
 
     // setup camera
     camera_config_t config;
@@ -245,7 +227,7 @@ void setup(){
 
 
     //FEC init
-    fec.init_fec();
+    //fec.init_fec();
     fec.fec_new(6, 8, &fec.fec_type);
 }
 

@@ -30,10 +30,8 @@ static constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - 6; //6 is the f
 
 constexpr size_t GROUND2AIR_DATA_MAX_SIZE = 64;
 
-struct Ground2Air_Header
-{
-    enum class Type : uint8_t
-    {
+struct Ground2Air_Header{
+    enum class Type : uint8_t{
         Telemetry,
         Config,
     };
@@ -78,7 +76,6 @@ typedef struct {
     uint8_t highFPS5640;
 } TVMode;
 
-extern TVMode vmodes[];
 
 #define FEC_K 6
 #define FEC_N 12
@@ -134,10 +131,8 @@ static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
 
 ///////////////////////////////////////////////////////////////////////////////////////
 
-struct Air2Ground_Header
-{
-    enum class Type : uint8_t
-    {
+struct Air2Ground_Header{
+    enum class Type : uint8_t{
         Video,
         Telemetry,
         OSD
@@ -218,48 +213,6 @@ static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MTU, "");
 
 
 ///////////////////////////////////////////////////////////////////////////////////////
-
-#pragma pack(pop)
-
-static const int WifiRateBandwidth[] = {
-    2*1024*125, // 0 - RATE_B_2M_CCK,
-    2*1024*125, // 1 - RATE_B_2M_CCK_S,
-    5*1024*125, // 2 - RATE_B_5_5M_CCK,
-    5*1024*125, // 3 - RATE_B_5_5M_CCK_S,
-    11*1024*125, // 4 - RATE_B_11M_CCK,
-    11*1024*125, // 5 - RATE_B_11M_CCK_S,
-
-    6*1024*125, // 6 - RATE_G_6M_ODFM,
-    9*1024*125, // 7 - RATE_G_9M_ODFM,
-    12*1024*125, // 8 - RATE_G_12M_ODFM,
-    18*1024*125, // 9 - RATE_G_18M_ODFM,
-    24*1024*125,  // 10 - RATE_G_24M_ODFM,
-    36*1024*125,  // 11 - RATE_G_36M_ODFM,
-    48*1024*125,  // 12 - RATE_G_48M_ODFM,
-    54*1024*125,  // 13 - RATE_G_54M_ODFM,
-
-    6*1024*125, // 14 - RATE_N_6_5M_MCS0,
-    7*1024*125, // 15 - RATE_N_7_2M_MCS0_S,
-    13*1024*125, // 16 - RATE_N_13M_MCS1,
-    14*1024*125, // 17 - RATE_N_14_4M_MCS1_S,
-    19*1024*125, // 18 - RATE_N_19_5M_MCS2,
-    21*1024*125, // 19 - RATE_N_21_7M_MCS2_S,
-    26*1024*125, // 20 - RATE_N_26M_MCS3,
-    28*1024*125, // 21 - RATE_N_28_9M_MCS3_S,
-    39*1024*125, // 22 - RATE_N_39M_MCS4,
-    43*1024*125, // 23 - RATE_N_43_3M_MCS4_S,
-    52*1024*125, // 24 - RATE_N_52M_MCS5,
-    57*1024*125, // 25 - RATE_N_57_8M_MCS5_S,
-    58*1024*125, // 26 - RATE_N_58M_MCS6,
-    65*1024*125, // 27 - RATE_N_65M_MCS6_S,
-    65*1024*125, // 28 - RATE_N_65M_MCS7,
-    72*1024*125 // 29 - RATE_N_72M_MCS7_S,
-};
-
-int getBandwidthForRate(WIFI_Rate rate){
-    return WifiRateBandwidth[(int)rate];
-}
-
 static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
 static float s_quality_framesize_K2 = 1;
 static float s_quality_framesize_K3 = 1;

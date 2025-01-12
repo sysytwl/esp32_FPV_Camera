@@ -1,3 +1,7 @@
+// IRAM (Instruction RAM): 0x40080000 - 0x400A0000
+// DRAM (Data RAM): 0x3FFAE000 - 0x3FFFFFFF
+
+
 // #include "esp_event.h"
 // 
 // #include <driver/adc.h>
@@ -269,4 +273,15 @@ Air send:
  - reads s_wlan_outgoing_queue
  - calls esp_wifi_80211_tx() 
 
+TX packet structure:
+|--------------------------
+| WLAN_IEEE_HEADER = 24 bytes
+|-------------------------
+| FEC_HEADER = 4 bytes
+|-------------------------
+| Air2Ground_Header = 8 bytes
+|-------------------------
+| Air2Ground_Video_Packet = 16 bytes  |  Air2Ground_OSD_Packet = 16 bytes
+|-------------------------
+| JPEG data | OSD data | MAVLINK data | TELEMETRY data  (ADD zeros if not enough data)
 */

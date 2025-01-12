@@ -4,7 +4,11 @@
 //#include "esp_wifi_types.h"
 #include "esp_heap_caps.h"
 //#include "esp_task_wdt.h"
-#include "esp_private/wifi.h" //esp_err_t esp_wifi_internal_reg_rxcb(wifi_interface_t ifx, wifi_rxcb_t fn);
+#include "esp_private/wifi.h"
+//esp_err_t esp_wifi_internal_reg_rxcb(wifi_interface_t ifx, wifi_rxcb_t fn);
+//esp_err_t esp_wifi_set_tx_done_cb(wifi_tx_done_cb_t cb);
+//esp_wifi_set_promiscuous_rx_cb(packet_received_cb)
+
 //#include "esp_task_wdt.h"
 // #include "freertos/FreeRTOS.h"
 // #include "freertos/queue.h"

@@ -64,6 +64,38 @@ static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                            10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
                                            21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
 
+class FEC_Block_buffer{
+public:
+  bool init(size_t packet_len, size_t num_blocks){
+    _MTU = packet_len;
+    _num_blocks = num_blocks;
+
+    _block_pointers = (uint8_t**) malloc(sizeof(uint8_t*) * num_blocks); //heap_caps_malloc(packet_len, MALLOC_CAP_SPIRAM);
+    if (_block_pointers == NULL) {
+      return false;
+    }
+    for(int i = 0; i < num_blocks; i++) {
+      _block_pointers[i] = (uint8_t*) malloc(packet_len);
+      if (_block_pointers[i] == NULL) {
+        deinit();
+      return false;
+      }
+    }
+  };
+
+  void deinit(){
+    for(int i = 0; i < _num_blocks; i++) {
+      free(_block_pointers[i]);
+    }
+    free(_block_pointers);
+  };
+
+private:
+  size_t _MTU;
+  uint8_t _num_blocks;
+  uint8_t** _block_pointers;
+};
+
 class ZFE_FEC{
 private:
   typedef unsigned char gf;

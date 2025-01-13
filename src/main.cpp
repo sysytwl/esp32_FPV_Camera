@@ -231,7 +231,8 @@ void setup(){
 
 
     //FEC init
-    //fec.init_fec();
+    fec.init_fec();
+    fec.fec_free(&fec.fec_type);
     fec.fec_new(6, 8, &fec.fec_type);
 }
 

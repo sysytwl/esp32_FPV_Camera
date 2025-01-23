@@ -177,7 +177,7 @@ bool ll_cam_start(cam_obj_t *cam, int frame_pos){
     I2S0.lc_conf.ahbm_rst = 1;
     I2S0.lc_conf.ahbm_rst = 0;
 
-    I2S0.rx_eof_num = cam->dma_half_buffer_size / sizeof(dma_elem_t);
+    I2S0.rx_eof_num = cam->dma_buffer_size / sizeof(dma_elem_t);
     I2S0.in_link.addr = ((uint32_t)&cam->dma[0]) & 0xfffff;
 
     I2S0.in_link.start = 1;
@@ -284,16 +284,17 @@ uint8_t ll_cam_get_dma_align(cam_obj_t *cam){
     return 0;
 }
 
-#define min(a, b) ((a)<(b) ? (a):(b))
+//#define min(a, b) ((a)<(b) ? (a):(b))
 bool ll_cam_dma_sizes(cam_obj_t *cam){
     cam->dma_bytes_per_item = ll_cam_bytes_per_sample(sampling_mode);
+    cam->dma_buffer_size *= cam->dma_bytes_per_item; //4 byte aligned, check in the future if dma_bytes_per_item is not 4
 
-    cam->dma_half_buffer_cnt = 4;
-    cam->dma_node_buffer_size =  min((cam->width) * (cam->dma_bytes_per_item), 2048);
-    cam->dma_half_buffer_size = cam->dma_node_buffer_size * 2;
-
-    cam->dma_buffer_size = cam->dma_half_buffer_cnt * cam->dma_half_buffer_size;
-
+    uint32_t dma_to_node_cnt = cam->dma_buffer_size % 2048 ? cam->dma_buffer_size/2048 + 1: cam->dma_buffer_size/2048;
+    while(cam->dma_buffer_size % dma_to_node_cnt){
+        dma_to_node_cnt++;
+    };
+    cam->dma_node_buffer_size = cam->dma_buffer_size/dma_to_node_cnt;
+    cam->dma_node_cnt = (cam->dma_buffer_size * cam->dma_buffer_cnt) / cam->dma_node_buffer_size; // Number of DMA nodes
     return 1;
 }
 

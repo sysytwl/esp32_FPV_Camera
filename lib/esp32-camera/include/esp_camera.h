@@ -112,19 +112,17 @@ typedef struct {
     int pin_pclk;                   /*!< GPIO pin for camera PCLK line */
 
     int xclk_freq_hz;               /*!< Frequency of XCLK signal, in Hz. EXPERIMENTAL: Set to 16MHz on ESP32-S2 or ESP32-S3 to enable EDMA mode */
-
     ledc_timer_t ledc_timer;        /*!< LEDC timer to be used for generating XCLK  */
     ledc_channel_t ledc_channel;    /*!< LEDC channel to be used for generating XCLK  */
 
     framesize_t frame_size;         /*!< Size of the output image: FRAMESIZE_ + QVGA|CIF|VGA|SVGA|XGA|SXGA|UXGA  */
-
     int jpeg_quality;               /*!< Quality of JPEG output. 0-63 lower means higher quality  */
-    //size_t fb_count;                /*!< Number of frame buffers to be allocated. If more than one, then each frame will be acquired (double speed)  */
 
     int sccb_i2c_port;              /*!< If pin_sccb_sda is -1, use the already configured I2C bus by number */
 
-    void (*data_available_callback)(void * cam_obj,const uint8_t* data, size_t count, bool last); // DMA call back function, Non blocking intterupt
-
+    uint8_t (*data_available_callback)(bool last); // DMA call back, should return FEC buffer location
+    uint32_t data_pack_size; //size of data pack for data_available_callback
+    uint32_t data_pack_num; //number of data pack for data_available_callback
 } camera_config_t;
 
 /**

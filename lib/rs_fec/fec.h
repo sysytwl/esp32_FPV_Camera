@@ -66,9 +66,17 @@ static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
 
 class FEC_Block_buffer{
 public:
-  bool init(size_t packet_len, size_t num_blocks){
+
+  /**
+   * @param packet_len the length of a packet in bytes
+   * @param num_blocks the number of blocks to be stored in the buffer
+   * @param header_offset the offset for the air2ground struct header
+   */
+  bool init(size_t packet_len, size_t num_blocks, size_t header_offset){
     _MTU = packet_len;
     _num_blocks = num_blocks;
+    _header_offset = header_offset;
+    _real_MTU = _MTU - _header_offset;
 
     _block_pointers = (uint8_t**) malloc(sizeof(uint8_t*) * num_blocks); //heap_caps_malloc(packet_len, MALLOC_CAP_SPIRAM);
     if (_block_pointers == NULL) {
@@ -81,6 +89,13 @@ public:
       return false;
       }
     }
+    _emergency_block_data = (uint8_t*) malloc(packet_len);
+    if (_emergency_block_data == NULL) {
+      deinit();
+      return false;
+    }
+    
+    return true;
   };
 
   void deinit(){
@@ -90,10 +105,44 @@ public:
     free(_block_pointers);
   };
 
+  uint8_t** get_block_pointers(){
+    return _block_pointers;
+  };
+
+  bool fill_blocks(uint8_t* data, size_t data_len, bool fill_zeros){
+    if(data_len + _data_offset > _real_MTU){
+      size_t remaining_data_size = _real_MTU - _data_offset; // remaining space in the current block
+      fill_blocks(data, remaining_data_size, fill_zeros);
+      data += remaining_data_size;
+      data_len -= remaining_data_size;
+    }
+
+    if(_block_index > _num_blocks){// if the block index is greater than the number of blocks, then we are in an emergency situation
+      memcpy(_emergency_block_data + _data_offset, data, data_len);
+      
+    }
+
+    memcpy(_block_pointers[_block_index] + _data_offset, data, data_len);
+    
+    if(fill_zeros){
+      memset(_block_pointers[_block_index] + _data_offset + data_len, 0, _real_MTU - data_len - _data_offset);
+    }
+
+    _data_offset = (_data_offset + data_len) < _real_MTU ? _data_offset + data_len : 0;
+    _block_index ++;
+  };
+
 private:
   size_t _MTU;
+  size_t _header_offset;
+  size_t _real_MTU;
+
   uint8_t _num_blocks;
   uint8_t** _block_pointers;
+  uint8_t* _emergency_block_data;
+
+  size_t _block_index = 0;
+  size_t _data_offset = 0;
 };
 
 class ZFE_FEC{

@@ -73,17 +73,13 @@ typedef enum {
 typedef struct {
     uint32_t dma_bytes_per_item;
     uint32_t dma_buffer_size;
-    uint32_t dma_half_buffer_size;
-    uint32_t dma_half_buffer_cnt;
+    uint32_t dma_buffer_cnt;
     uint32_t dma_node_buffer_size;
     uint32_t dma_node_cnt;
-    uint32_t frame_copy_cnt;
 
     //for JPEG mode
     lldesc_t *dma; //DMA descriptors
     uint8_t  *dma_buffer; //DMA buffer
-
-    uint8_t *buf;
 
     QueueHandle_t event_queue;
     //QueueHandle_t frame_buffer_queue;
@@ -100,7 +96,7 @@ typedef struct {
     uint8_t vsync_pin;
     uint8_t vsync_invert;
     //uint32_t frame_cnt;
-    uint32_t recv_size;
+    //uint32_t recv_size;
     //bool swap_data;
     bool psram_mode;  //s3 DMA can access psram
 

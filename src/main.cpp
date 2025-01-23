@@ -125,7 +125,7 @@ jpeg is terminated already in the previous block. We waste only few bytes at the
 ov5640: we are able to finish frame at the first completely zero block,
 and even on the block wich has 16 zeros at end
 */
-IRAM_ATTR void camera_data_available(void * cam_obj, const uint8_t* data, size_t count, bool last){ 
+IRAM_ATTR uint8_t camera_data_available(bool last){ 
     // if(getOVFFlagAndReset()){//over flow, reduce size
     //     s_quality_framesize_K3 = 0.05;
     //     cam_ovf_count++;

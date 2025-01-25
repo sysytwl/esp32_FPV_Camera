@@ -206,6 +206,11 @@ esp_err_t esp_camera_save_to_nvs(const char *key);
  */
 esp_err_t esp_camera_load_from_nvs(const char *key);
 
+/**
+ * @brief ESP CAM TICK (DMA DATA PROCESSING)
+ */
+extern bool esp_cam_tick(uint8_t *data, bool *last);
+
 #ifdef __cplusplus
 }
 #endif

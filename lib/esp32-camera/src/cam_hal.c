@@ -74,59 +74,58 @@ static int cam_verify_jpeg_eoi(const uint8_t *inbuf, uint32_t length){
 }
 
 //Copy fram from DMA dma_buffer to fram dma_buffer
-static void cam_task(void *arg){
-    int cnt = 0;
-    //int frame_pos = 0;
-    cam_event_t cam_event = 0;
-    cam_obj->state = CAM_STATE_IDLE;
-    xQueueReset(cam_obj->event_queue);
+int cnt = 0;
+//int frame_pos = 0;
+cam_event_t cam_event = 0;
 
-    while (1){
-        xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
-        switch (cam_obj->state) {
-            case CAM_STATE_IDLE: {
-                if (cam_event == CAM_VSYNC_EVENT) {
-                    //cam_obj->frames[*frame_pos].fb.timestamp.tv_sec = (uint64_t)esp_timer_get_time() / 1000000UL;
-                    cam_obj->state = CAM_STATE_READ_BUF;
-                    cnt = 0;
-                }
-            }
-            break;
-
-            case CAM_STATE_READ_BUF: {
-                if (cam_event == CAM_IN_SUC_EOF_EVENT) {
-                    uint8_t buf = data_available_callback(false);
-                    size_t data_len = ll_cam_memcpy(cam_obj, buf, &cam_obj->dma_buffer[(cnt % cam_obj->dma_buffer_cnt) * cam_obj->dma_buffer_size], cam_obj->dma_buffer_size);
-                    cnt++;
-
-                    //Check for JPEG SOI in the first buffer. stop if not found
-                    if (cnt == 0 && cam_verify_jpeg_soi(buf, data_len) != 0) { //missed the SOI marker, skip the frame
-                        ll_cam_stop(cam_obj);
-                        cam_obj->state = CAM_STATE_IDLE;
-                    }
-
-                } else if (cam_event == CAM_VSYNC_EVENT) {//Stop DMA and get the data
-                    ll_cam_stop(cam_obj);
-
-                    if (cnt) {
-                        uint8_t buf = data_available_callback(true);
-                        size_t data_len = ll_cam_memcpy(cam_obj, buf, &cam_obj->dma_buffer[(cnt % cam_obj->dma_buffer_cnt) * cam_obj->dma_buffer_size], cam_obj->dma_buffer_size);
-                        cnt++;
-
-                        // find the end marker for JPEG. Data after that can be discarded edge case - 0xFF at the end of prev block, 0xD9 on the start of this
-                        int offset_e = cam_verify_jpeg_eoi(buf, data_len);
-                        if (offset_e == 0) {
-                            ESP_LOGW(TAG, "NO-EOI");
-                            // adjust buffer length
-                            //data_len = offset_e + sizeof(JPEG_EOI_MARKER);
-                        }                        
-                    }
-                }
-                cam_obj->state = CAM_STATE_IDLE;
+bool esp_cam_tick(uint8_t *data, bool *last){
+    xQueueReceive(cam_obj->event_queue, (void *)&cam_event, portMAX_DELAY);
+    switch (cam_obj->state) {
+        case CAM_STATE_IDLE: {
+            if (cam_event == CAM_VSYNC_EVENT) {
+                //cam_obj->frames[*frame_pos].fb.timestamp.tv_sec = (uint64_t)esp_timer_get_time() / 1000000UL;
+                cam_obj->state = CAM_STATE_READ_BUF;
                 cnt = 0;
             }
-            break;
         }
+        return false;
+
+        case CAM_STATE_READ_BUF: {
+            if (cam_event == CAM_IN_SUC_EOF_EVENT) {
+                //uint8_t buf = data_available_callback(false);
+                last = false;
+                size_t data_len = ll_cam_memcpy(cam_obj, data, &cam_obj->dma_buffer[(cnt % cam_obj->dma_buffer_cnt) * cam_obj->dma_buffer_size], cam_obj->dma_buffer_size);
+                cnt++;
+
+                //Check for JPEG SOI in the first buffer. stop if not found
+                if (cnt == 0 && cam_verify_jpeg_soi(data, data_len) != 0) { //missed the SOI marker, skip the frame
+                    ll_cam_stop(cam_obj);
+                    cam_obj->state = CAM_STATE_IDLE;
+                    return false;
+                }
+
+            } else if (cam_event == CAM_VSYNC_EVENT) {//Stop DMA and get the data
+                ll_cam_stop(cam_obj);
+
+                if (cnt) {
+                    //uint8_t buf = data_available_callback(true);
+                    last = true;
+                    size_t data_len = ll_cam_memcpy(cam_obj, data, &cam_obj->dma_buffer[(cnt % cam_obj->dma_buffer_cnt) * cam_obj->dma_buffer_size], cam_obj->dma_buffer_size);
+                    cnt++;
+
+                    // find the end marker for JPEG. Data after that can be discarded edge case - 0xFF at the end of prev block, 0xD9 on the start of this
+                    int offset_e = cam_verify_jpeg_eoi(data, data_len);
+                    if (offset_e == 0) {
+                        ESP_LOGW(TAG, "NO-EOI");
+                        // adjust buffer length
+                        //data_len = offset_e + sizeof(JPEG_EOI_MARKER);
+                    }                        
+                }
+            }
+            cam_obj->state = CAM_STATE_IDLE;
+            cnt = 0;
+        }
+        return true;
     }
     //vTaskDelete(NULL); // end of the task
 }
@@ -218,7 +217,7 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
 
 #if CONFIG_IDF_TARGET_ESP32
     cam_obj->psram_mode = false;
-#else
+#elif CONFIG_IDF_TARGET_ESP32S3
     cam_obj->psram_mode = (config->xclk_freq_hz == 16000000);
 #endif
 
@@ -240,13 +239,9 @@ esp_err_t cam_config(const camera_config_t *config, framesize_t frame_size, uint
     ret = ll_cam_init_isr(cam_obj);
     CAM_CHECK_GOTO(ret == ESP_OK, "cam intr alloc failed", err);
 
-// #if CONFIG_CAMERA_CORE0
-    xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, NULL, 0);
-// #elif CONFIG_CAMERA_CORE1
-//     xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, NULL, 1);
-// #else
-//     xTaskCreate(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, &cam_obj->task_handle);
-// #endif
+    cam_obj->state = CAM_STATE_IDLE;
+    xQueueReset(cam_obj->event_queue);
+    //xTaskCreatePinnedToCore(cam_task, "cam_task", CAM_TASK_STACK, NULL, configMAX_PRIORITIES - 2, NULL, 0);
 
     data_available_callback=config->data_available_callback; //assign external call back, blocking
 

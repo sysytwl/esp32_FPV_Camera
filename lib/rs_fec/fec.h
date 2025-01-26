@@ -64,86 +64,7 @@ static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
                                            10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
                                            21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31 };
 
-class FEC_Block_buffer{
-public:
 
-  /**
-   * @param packet_len the length of a packet in bytes
-   * @param num_blocks the number of blocks to be stored in the buffer
-   * @param header_offset the offset for the air2ground struct header
-   */
-  bool init(size_t packet_len, size_t num_blocks, size_t header_offset){
-    _MTU = packet_len;
-    _num_blocks = num_blocks;
-    _header_offset = header_offset;
-    _real_MTU = _MTU - _header_offset;
-
-    _block_pointers = (uint8_t**) malloc(sizeof(uint8_t*) * num_blocks); //heap_caps_malloc(packet_len, MALLOC_CAP_SPIRAM);
-    if (_block_pointers == NULL) {
-      return false;
-    }
-    for(int i = 0; i < num_blocks; i++) {
-      _block_pointers[i] = (uint8_t*) malloc(packet_len);
-      if (_block_pointers[i] == NULL) {
-        deinit();
-      return false;
-      }
-    }
-    _emergency_block_data = (uint8_t*) malloc(packet_len);
-    if (_emergency_block_data == NULL) {
-      deinit();
-      return false;
-    }
-    
-    return true;
-  };
-
-  void deinit(){
-    for(int i = 0; i < _num_blocks; i++) {
-      free(_block_pointers[i]);
-    }
-    free(_block_pointers);
-  };
-
-  uint8_t** get_block_pointers(){
-    return _block_pointers;
-  };
-
-  bool fill_blocks(uint8_t* data, size_t data_len, bool fill_zeros){
-    if(data_len + _data_offset > _real_MTU){
-      size_t remaining_data_size = _real_MTU - _data_offset; // remaining space in the current block
-      fill_blocks(data, remaining_data_size, fill_zeros);
-      data += remaining_data_size;
-      data_len -= remaining_data_size;
-    }
-
-    if(_block_index > _num_blocks){// if the block index is greater than the number of blocks, then we are in an emergency situation
-      memcpy(_emergency_block_data + _data_offset, data, data_len);
-      
-    }
-
-    memcpy(_block_pointers[_block_index] + _data_offset, data, data_len);
-    
-    if(fill_zeros){
-      memset(_block_pointers[_block_index] + _data_offset + data_len, 0, _real_MTU - data_len - _data_offset);
-    }
-
-    _data_offset = (_data_offset + data_len) < _real_MTU ? _data_offset + data_len : 0;
-    _block_index ++;
-  };
-
-private:
-  size_t _MTU;
-  size_t _header_offset;
-  size_t _real_MTU;
-
-  uint8_t _num_blocks;
-  uint8_t** _block_pointers;
-  uint8_t* _emergency_block_data;
-
-  size_t _block_index = 0;
-  size_t _data_offset = 0;
-};
 
 class ZFE_FEC{
 private:
@@ -167,7 +88,7 @@ public:
    */
   void fec_encode(const fec_t* code, const gf* const* const src, gf* const* const fecs, const unsigned* const block_nums, size_t num_block_nums, size_t sz);
 
-  void fec_encode_block(const fec_t* code, const uint8_t* const src, uint8_t* const fec, const unsigned* const block_nums, int fec_block_index, size_t sz);
+  void fec_encode_block(const fec_t* code, const uint8_t** const src, uint8_t* const fec, const unsigned* const block_nums, int fec_block_index, size_t sz);
 
   /**
    * @param inpkts an array of packets (size k); If a primary block, i, is present then it must be at index i. Secondary blocks can appear anywhere.

@@ -211,6 +211,25 @@ esp_err_t esp_camera_load_from_nvs(const char *key);
  */
 extern bool esp_cam_tick(uint8_t *data, bool *last);
 
+/**
+ * @brief CAM JPEG IMG Quality auto change
+ */
+static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
+static float s_quality_framesize_K2 = 1;
+static float s_quality_framesize_K3 = 1;
+int calculateAdaptiveQualityValue(){
+    int quality1 = (int)(8 + (63-8) * (1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
+    if ( quality1 < 8) quality1 = 8;
+    if ( quality1 > 63) quality1 = 63;
+
+    //recode due to non-linear frame size changes depending on quality
+    //from 8 to 19 frame size decreases by half, from 20 to 63 frame size decreases by half
+    //y=(x-8)^2.3/185 + 8
+    static const uint8_t recode[64-8] = {8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 14, 15, 15, 16, 17, 18, 19, 20, 20, 21, 23, 24, 25, 26, 27, 29, 30, 31, 33, 34, 36, 37, 39, 41, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63};
+
+    return recode[quality1-8];
+}
+
 #ifdef __cplusplus
 }
 #endif

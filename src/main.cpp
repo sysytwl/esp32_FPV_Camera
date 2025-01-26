@@ -37,9 +37,10 @@
 // #include "circular_buffer.h"
 
 #include "main.h"
+#include "esp_heap_caps.h"
 #include "config.h"
 #include "esp_camera.h"
-
+#include "fec_buffer.h"
 #include "fec.h"
 
 //#include "osd.h"
@@ -71,7 +72,7 @@
 
 //static size_t s_video_frame_data_size = 0;
 //static uint32_t s_video_frame_index = 0;
-static uint8_t s_video_part_index = 0;
+//static uint8_t s_video_part_index = 0;
 //static bool s_video_frame_started = false;
 //static size_t s_video_full_frame_size = 0;
 //static uint8_t s_osdUpdateCounter = 0;
@@ -80,14 +81,14 @@ static uint8_t s_video_part_index = 0;
 //static int s_actual_capture_fps = 0;
 //static int s_actual_capture_fps_expected = 0;
 
-static int s_quality = 20;
+//static int s_quality = 20;
 
 //static int s_max_frame_size = 0;
 //static int s_sharpness = 20;
 
 
 ZFE_FEC fec;
-
+FEC_Block_buffer fec_buf;
 
 
 void applyAdaptiveQuality(){
@@ -98,33 +99,6 @@ void applyAdaptiveQuality(){
 #define coding_k 6
 #define coding_n 8
 
-/* 
-'bool last' does not mark last JPEG block reliably.
-
-ov2640: if VSYNC interrupt occurs near the end of the last block, we receive another 1Kb block of garbage.
-Note that ov2460 sends up zero bytes after FF D9 till 16 byte boundary, then a garbage to the end of the block, 
-so if we receive extra block, the end of proper 'last' block is filled by zeros after FF D9
-
-ov5640: we always receive up to 3 more zero 1kb blocks (uncertain: can we receive +7 blocks if VSYNK interrupt occurs at the end of 4th block?)
-The end of proper 'last' block is filled by zeros after FF D9 (up to 1 kb)
-
-There are two problems:
-1) As we may receive garbage block, searching for the end marker in garbage may lead to incorrect JPEG size calculation and inclusion of garbage bytes 
-  (possibly with misleading JPEG markers) in the stream.
-2) with 0v5640 we waste bandwidth for 1..3 1kb blocks, it's 10% video bandwidth wasted!
-
-Proper solution - jpeg chunks parsing - is possible but waste of CPU resources, because jpeg has to be processed byte-by-byte.
-
-We apply very fast workaround instead.
-
-We always zero first 16 bytes in the DMA buffer after processing.
-
-ov2640: instead of receiving garbage block, we receive block with 16 zeros at start. This way we know that the whole buffer has to be skipped; 
-jpeg is terminated already in the previous block. We waste only few bytes at the end of the block, which are filled by zeros.
-
-ov5640: we are able to finish frame at the first completely zero block,
-and even on the block wich has 16 zeros at end
-*/
 IRAM_ATTR uint8_t camera_data_available(bool last){ 
     // if(getOVFFlagAndReset()){//over flow, reduce size
     //     s_quality_framesize_K3 = 0.05;
@@ -134,13 +108,7 @@ IRAM_ATTR uint8_t camera_data_available(bool last){
     // }
 
 
-    //the amount of packets that need decoding is the smallest of:
-    // 1. Block size (coding_k)
-    // 2. Fec packets (coding_n - coding_k)
-    uint8_t* fec_dst_ptr = new uint8_t[count * (coding_n - coding_k)];
-    for (int i = 0; i < coding_n - coding_k; i++){
-        fec.fec_encode_block(&fec.fec_type, data, fec_dst_ptr + (count * i), BLOCK_NUMS + coding_k, i, count);
-    };
+
 
 #ifdef DVR_SUPPORT
     if (s_air_record){
@@ -199,7 +167,7 @@ void setup(){
     // }
     // nvs_close(fpv_cam_config);
 
-
+    fec_buf.init(1500, coding_k, 20, coding_n);
 
     // setup camera
     camera_config_t config;
@@ -236,7 +204,31 @@ void setup(){
     fec.fec_new(6, 8, &fec.fec_type);
 }
 
+size_t count = 1500;
 void loop(){
+    static bool last = false;
+
+    if(esp_cam_tick(fec_buf.get_block_pointer(), &last)){//check for DMA/VSYNC IRS, add to the fec buffer
+        //send the pack
+
+        //wifi injection
+
+        if(fec_buf.fec_buf_ready()){
+            uint8_t* fec_dst_ptr = (uint8_t*)heap_caps_malloc(count * (coding_k-coding_n), MALLOC_CAP_8BIT); //need to be zero?
+            for (int i = 0; i < coding_n - coding_k; i++){
+                fec.fec_encode_block(&fec.fec_type, fec_buf.get_block_pointers(), fec_dst_ptr + (count * i), BLOCK_NUMS + coding_k, i, count);
+            };
+        }
+        fec_buf.block_index_add();
+    }
+    
+
+
+
+
+
+
+
 
 }
 
@@ -261,17 +253,13 @@ Air receive:
  
 
 Air send:
-1) camera_data_available callback from camera library
- - send_air2ground_video_packet() - passes Air2Ground_Video_Packet to s_fec_encode.
- - flush_encode_packet() - concatenates data until mtu size and passes to m_encoder.packet_queue
+1) esp cam tick 
+ - true: send the pack, add to the fec buffer, 
+ - false: pass
  
- 2) encoder_task_proc()
-  - gathers packets in m_encoder.block_packets
-  - calls fec_encode(()
-  - add_to_wlan_outgoing_queue() - places encoded packets into s_wlan_outgoing_queue
+2) call fec if fec buffer num == coding_k
 
 3) wifi_tx_proc
- - reads s_wlan_outgoing_queue
  - calls esp_wifi_80211_tx() 
 
 TX packet structure:

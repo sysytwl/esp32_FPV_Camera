@@ -1,10 +1,9 @@
 #pragma once
 
-#include "structures.h"
+//#include "structures.h"
 
 #define DEFAULT_WIFI_CHANNEL 13
-
-#define FW_VERSION "0.3.1"
+#define FW_VERSION "0.4.2"
 #define PACKET_VERSION 1
 
 #pragma pack(push, 1) // exact fit - no padding
@@ -26,7 +25,7 @@ TVMode vmodes[] = {
 
 static constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - 6; //6 is the fec header size
 
-///////////////////////////////////////////////////////////////////////////////////////
+
 
 constexpr size_t GROUND2AIR_DATA_MAX_SIZE = 64;
 
@@ -44,14 +43,12 @@ struct Ground2Air_Header{
 
 constexpr size_t  GROUND2AIR_DATA_MAX_PAYLOAD_SIZE = GROUND2AIR_DATA_MAX_SIZE - sizeof(Ground2Air_Header);
 
-struct Ground2Air_Data_Packet : Ground2Air_Header
-{
+struct Ground2Air_Data_Packet : Ground2Air_Header{
     uint8_t payload[GROUND2AIR_DATA_MAX_PAYLOAD_SIZE];
 };
 static_assert(sizeof(Ground2Air_Data_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
 
-enum class Resolution : uint8_t
-{
+enum class Resolution : uint8_t{
     QVGA,   //320x240
     CIF,    //400x296
     HVGA,   //480x320
@@ -67,7 +64,7 @@ enum class Resolution : uint8_t
     COUNT
 };
 
-typedef struct {
+typedef struct{
     uint16_t width;
     uint16_t height;
     uint8_t FPS2640;
@@ -76,17 +73,13 @@ typedef struct {
     uint8_t highFPS5640;
 } TVMode;
 
-
-#define FEC_K 6
-#define FEC_N 12
-
 struct Ground2Air_Config_Packet: Ground2Air_Header{
     uint8_t ping = 0; //used for latency measurement
     int8_t wifi_power = 20;//dBm
-    WIFI_Rate wifi_rate = WIFI_Rate::RATE_G_24M_ODFM;
+    wifi_phy_rate_t wifi_rate;
     uint8_t wifi_channel = DEFAULT_WIFI_CHANNEL;
-    uint8_t fec_codec_k = FEC_K;
-    uint8_t fec_codec_n = FEC_N;
+    uint8_t fec_codec_k;
+    uint8_t fec_codec_n;
     uint16_t fec_codec_mtu = AIR2GROUND_MTU;
     uint8_t air_record_btn = 0; //incremented each time button is pressed on gs
     uint8_t profile1_btn = 0; //incremented each time button is pressed on gs
@@ -129,7 +122,10 @@ struct Ground2Air_Config_Packet: Ground2Air_Header{
 };
 static_assert(sizeof(Ground2Air_Config_Packet) <= GROUND2AIR_DATA_MAX_SIZE, "");
 
-///////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
 
 struct Air2Ground_Header{
     enum class Type : uint8_t{
@@ -152,28 +148,19 @@ struct Air2Ground_Video_Packet : Air2Ground_Header{
     uint32_t frame_index = 0;
     //data follows
 };
-
 static_assert(sizeof(Air2Ground_Video_Packet) == 14, "");
-
-struct Air2Ground_Data_Packet : Air2Ground_Header
-{
-};
-
 
 #define OSD_COLS 53
 #define OSD_COLS_H 7 //56 bits
 #define OSD_ROWS 20
-
 #define OSD_BUFFER_SIZE (OSD_ROWS*OSD_COLS + OSD_ROWS*OSD_COLS_H)
 
-struct OSDBuffer
-{
+struct OSDBuffer{
     uint8_t screenLow[OSD_ROWS][OSD_COLS];
     uint8_t screenHigh[OSD_ROWS][OSD_COLS_H];
 };
 
-struct AirStats
-{
+struct AirStats{
     uint8_t SDDetected : 1;
     uint8_t SDSlow : 1;
     uint8_t SDError : 1;
@@ -203,28 +190,9 @@ struct AirStats
     uint16_t outMavlinkRate; //b/s
 };
 
-struct Air2Ground_OSD_Packet : Air2Ground_Header
-{
+struct Air2Ground_OSD_Packet : Air2Ground_Header{
     AirStats stats;
     OSDBuffer buffer;
 };
 
 static_assert(sizeof(Air2Ground_OSD_Packet) <= AIR2GROUND_MTU, "");
-
-
-///////////////////////////////////////////////////////////////////////////////////////
-static float s_quality_framesize_K1 = 0; //startup from minimum quality to decrease pressure
-static float s_quality_framesize_K2 = 1;
-static float s_quality_framesize_K3 = 1;
-int calculateAdaptiveQualityValue(){
-    int quality1 = (int)(8 + (63-8) * ( 1 - s_quality_framesize_K1 * s_quality_framesize_K2 * s_quality_framesize_K3));
-    if ( quality1 < 8) quality1 = 8;
-    if ( quality1 > 63) quality1 = 63;
-
-    //recode due to non-linear frame size changes depending on quality
-    //from 8 to 19 frame size decreases by half, from 20 to 63 frame size decreases by half
-    //y=(x-8)^2.3/185 + 8
-    static const uint8_t recode[64-8] = {8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 11, 12, 12, 13, 13, 14, 15, 15, 16, 17, 18, 19, 20, 20, 21, 23, 24, 25, 26, 27, 29, 30, 31, 33, 34, 36, 37, 39, 41, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 63};
-
-    return recode[quality1-8];
-}

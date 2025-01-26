@@ -17,29 +17,19 @@
 #include "packets.h"
 #include "stdint.h"
 
-/*
-constexpr uint8_t WLAN_IEEE_HEADER_AIR2GROUND[] =
-{
-    0x08, 0x01, 0x00, 0x00,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
-    0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
-    0x10, 0x86
-};
-*/
 
 
-//first byte - frame control
 //https://www.geeksforgeeks.org/ieee-802-11-mac-frame/
 //https://en.wikipedia.org/wiki/802.11_Frame_Types
 //each byte shifted from lower bits
 //08 = 00 version, 01 frame type, 0000 subtype
-constexpr uint8_t WLAN_IEEE_HEADER_AIR2GROUND[]={
-  0x08, 0x00, 0x00, 0x00,
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-  0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
-  0x11, 0x22, 0x33, 0x44, 0x55, 0x66,
-  0x10, 0x86
+uint8_t WLAN_IEEE_HEADER_AIR2GROUND[]={
+  0x08, 0x00,//frame control
+  0x00, 0x00,//2-3: Duration
+  0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF,// 4-9: Destination address (broadcast)
+  0x11, 0x22, 0x33, 0x44, 0x55, 0x66,// 10-15: Source address
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00,// 16-21: BSSID
+  0x10, 0x86// 22-23: Sequence / fragment number
 };
 
 constexpr uint8_t WLAN_IEEE_HEADER_GROUND2AIR[]={
@@ -69,17 +59,23 @@ struct Wlan_Incoming_Packet{
   uint16_t offset = 0;
 };
 
+
+
+
+
+
+
 class WiFi_injection_sniffer{
 public:
-    void setup_wifi(){ //setup_wifi
+    void init(){ //setup_wifi
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
-        ESP_ERROR_CHECK(esp_wifi_set_mode(ESP_MODE_AP));
-        ESP_ERROR_CHECK(esp_wifi_config_80211_tx_rate(ESP_WIFI_IF, WIFI_PHY_RATE_11M_L));
+        ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
+        ESP_ERROR_CHECK(esp_wifi_config_80211_tx_rate(WIFI_IF_AP, WIFI_PHY_RATE_11M_L));
         ESP_ERROR_CHECK(esp_wifi_start());
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-        //ESP_ERROR_CHECK(esp_wifi_set_bandwidth(ESP_WIFI_IF, WIFI_BW_HT20 ));
+        //ESP_ERROR_CHECK(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20));
         ESP_ERROR_CHECK(esp_wifi_set_channel(13, WIFI_SECOND_CHAN_NONE));
 
         // wifi_promiscuous_filter_t filter = 
@@ -90,6 +86,8 @@ public:
         // ESP_ERROR_CHECK(esp_wifi_set_promiscuous_ctrl_filter(&filter));
         // ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(packet_received_cb));
         // ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
+
+        esp_wifi_get_mac(WIFI_IF_AP, WLAN_IEEE_HEADER_AIR2GROUND + 10);
     };
     
     void set_wifi_fixed_rate(wifi_phy_rate_t value){

@@ -392,7 +392,7 @@ void ZFE_FEC::fec_encode(const fec_t* code, const gf* const* const src, gf* cons
     }
 }
 
-void ZFE_FEC::fec_encode_block(const fec_t* code, const uint8_t* const src, uint8_t* const fec, const unsigned* const block_nums, int fec_block_index, size_t sz) {
+void ZFE_FEC::fec_encode_block(const fec_t* code, const uint8_t** const src, uint8_t* const fec, const unsigned* const block_nums, int fec_block_index, size_t sz) {
   unsigned char j;
   //size_t k;
   unsigned fecnum;
@@ -404,7 +404,7 @@ void ZFE_FEC::fec_encode_block(const fec_t* code, const uint8_t* const src, uint
   bzero(fec, sz);
   p = &(code->enc_matrix[fecnum * code->k]);
   for (j = 0; j < code->k; j++)
-    addmul(fec, &src[j], p[j], sz);
+    addmul(fec, src[j], p[j], sz);
 }
 
 void ZFE_FEC::fec_decode(const fec_t* code, const gf* const* const inpkts, gf* const* const outpkts, const unsigned* const index, size_t sz) {

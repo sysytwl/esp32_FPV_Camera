@@ -26,8 +26,8 @@
 #include <esp_ota_ops.h>
 #include <esp_partition.h>
 
-#include "main.h"
-#include "nvs_args.h"
+//#include "main.h"
+//#include "nvs_args.h"
 
 #include "wifi.h"
 
@@ -367,7 +367,7 @@ static esp_err_t configs_handler(httpd_req_t *req)
         httpd_req_recv(req,buf,req->content_len);
         cJSON *root = cJSON_Parse(buf);
         uint16_t channel = atoi(cJSON_GetStringValue(cJSON_GetObjectItem(root,"channel")));
-        nvs_args_set("channel",channel);
+        //nvs_args_set("channel",channel);
         //s_ground2air_config_packet.wifi_channel = channel;
         cJSON_Delete(root);
     }

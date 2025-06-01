@@ -93,62 +93,11 @@ FEC_Block_buffer fec_buf;
 
 void applyAdaptiveQuality(){
     sensor_t* s = esp_camera_sensor_get(); 
-    s->set_quality(s, s_quality); 
+    //s->set_quality(s, s_quality); 
 }
 
 #define coding_k 6
 #define coding_n 8
-
-IRAM_ATTR uint8_t camera_data_available(bool last){ 
-    // if(getOVFFlagAndReset()){//over flow, reduce size
-    //     s_quality_framesize_K3 = 0.05;
-    //     cam_ovf_count++;
-    //     s_stats.video_frames_expected++;
-    //     applyAdaptiveQuality();
-    // }
-
-
-
-
-#ifdef DVR_SUPPORT
-    if (s_air_record){
-        add_to_sd_fast_buffer(clrSrc, 0, true);
-#ifdef TEST_AVI_FRAMES
-        if ( s_video_full_frame_size == c ){
-            s_framesCounter++;
-            start_ptr[14] = s_framesCounter & 0xff;
-            start_ptr[15] = s_framesCounter >> 8;
-        }
-#endif    
-    }
-#endif
-
-    if(last){//note: can occur multiple times during frame  ,   end of frame - send leftover
-        //send_air2ground_video_packet(true);
-
-        //recalculateFrameSizeQualityK(s_video_full_frame_size);
-        applyAdaptiveQuality();
-
-        //s_stats.fec_spin_count += s_fec_spin_count;
-        //s_fec_spin_count = 0;
-
-        //handle_ground2air_config_packetEx2(false);
-        //if (!g_osd.isLocked() && (g_osd.isChanged() || (s_osdUpdateCounter == 15))){
-        //    send_air2ground_osd_packet();
-        //    s_osdUpdateCounter = 0;
-        //}
-
-#ifdef UART_MAVLINK
-        send_air2ground_data_packet();
-#endif
-
-    } else {
-        //send_air2ground_video_packet(false);
-        s_video_part_index++;
-    }
-
-    //s_fec_encoder.unlock();
-}
 
 
 
@@ -190,11 +139,8 @@ void setup(){
         config.pin_pwdn = PWDN_GPIO_NUM;
         config.pin_reset = RESET_GPIO_NUM;
         config.xclk_freq_hz = CAM_XCLK;  
-   
         config.frame_size = FRAMESIZE_CIF;
         config.jpeg_quality = 63;  //start from lowest quality to decrease pressure at startup
-        config.data_available_callback = camera_data_available;
-
     ESP_ERROR_CHECK(esp_camera_init(&config));
 
 
@@ -207,29 +153,17 @@ void setup(){
 size_t count = 1500;
 void loop(){
     static bool last = false;
-
     if(esp_cam_tick(fec_buf.get_block_pointer(), &last)){//check for DMA/VSYNC IRS, add to the fec buffer
         //send the pack
-
         //wifi injection
-
         if(fec_buf.fec_buf_ready()){
             uint8_t* fec_dst_ptr = (uint8_t*)heap_caps_malloc(count * (coding_k-coding_n), MALLOC_CAP_8BIT); //need to be zero?
             for (int i = 0; i < coding_n - coding_k; i++){
-                fec.fec_encode_block(&fec.fec_type, fec_buf.get_block_pointers(), fec_dst_ptr + (count * i), BLOCK_NUMS + coding_k, i, count);
+                fec.fec_encode_block(&fec.fec_type, (const uint8_t**)fec_buf.get_block_pointers(), fec_dst_ptr + (count * i), BLOCK_NUMS + coding_k, i, count);
             };
         }
         fec_buf.block_index_add();
     }
-    
-
-
-
-
-
-
-
-
 }
 
 /*

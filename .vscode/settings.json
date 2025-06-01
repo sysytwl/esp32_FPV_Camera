@@ -48,6 +48,7 @@
         "streambuf": "cpp",
         "cinttypes": "cpp",
         "typeinfo": "cpp",
-        "esp_event.h": "c"
+        "esp_event.h": "c",
+        "ll_cam.h": "c"
     }
 }

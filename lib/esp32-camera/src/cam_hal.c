@@ -87,6 +87,7 @@ bool esp_cam_tick(uint8_t *data, bool *last){
                 cam_obj->state = CAM_STATE_READ_BUF;
                 cnt = 0;
             }
+            *last = false;
         }
         return false;
 
@@ -109,7 +110,7 @@ bool esp_cam_tick(uint8_t *data, bool *last){
 
                 if (cnt) {
                     //uint8_t buf = data_available_callback(true);
-                    last = true;
+                    *last = true;
                     size_t data_len = ll_cam_memcpy(cam_obj, data, &cam_obj->dma_buffer[(cnt % cam_obj->dma_buffer_cnt) * cam_obj->dma_buffer_size], cam_obj->dma_buffer_size);
                     cnt++;
 
@@ -124,11 +125,14 @@ bool esp_cam_tick(uint8_t *data, bool *last){
             }
             cam_obj->state = CAM_STATE_IDLE;
             cnt = 0;
+
+            *last = true;
         }
         return true;
     }
     //vTaskDelete(NULL); // end of the task
-}
+    return false;
+};
 
 void IRAM_ATTR ll_cam_send_event(cam_obj_t *cam, cam_event_t cam_event, BaseType_t * HPTaskAwoken){
     if (xQueueSendFromISR(cam->event_queue, (void *)&cam_event, HPTaskAwoken) != pdTRUE) {

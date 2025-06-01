@@ -17,34 +17,9 @@
 #include "packets.h"
 #include "stdint.h"
 
+#include "crc.h"
 
 
-//https://www.geeksforgeeks.org/ieee-802-11-mac-frame/
-//https://en.wikipedia.org/wiki/802.11_Frame_Types
-//each byte shifted from lower bits
-//08 = 00 version, 01 frame type, 0000 subtype
-uint8_t WLAN_IEEE_HEADER_AIR2GROUND[]={
-  0x08, 0x00,//frame control
-  0x00, 0x00,//2-3: Duration
-  0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF,// 4-9: Destination address (broadcast)
-  0x11, 0x22, 0x33, 0x44, 0x55, 0x66,// 10-15: Source address
-  0x00, 0x00, 0x00, 0x00, 0x00, 0x00,// 16-21: BSSID
-  0x10, 0x86// 22-23: Sequence / fragment number
-};
-
-constexpr uint8_t WLAN_IEEE_HEADER_GROUND2AIR[]={
-  0x08, 0x01, 0x00, 0x00,
-  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-  0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
-  0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
-  0x10, 0x86
-};
-
-constexpr size_t WLAN_IEEE_HEADER_SIZE = sizeof(WLAN_IEEE_HEADER_AIR2GROUND);
-constexpr size_t WLAN_MAX_PACKET_SIZE = 1500;
-constexpr size_t WLAN_MAX_PAYLOAD_SIZE = WLAN_MAX_PACKET_SIZE - WLAN_IEEE_HEADER_SIZE;
-
-static_assert(WLAN_IEEE_HEADER_SIZE == 24, "");
 
 struct Wlan_Outgoing_Packet{
   uint8_t* ptr = nullptr;
@@ -72,7 +47,7 @@ public:
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
         ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_RAM));
         ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
-        ESP_ERROR_CHECK(esp_wifi_config_80211_tx_rate(WIFI_IF_AP, WIFI_PHY_RATE_11M_L));
+        ESP_ERROR_CHECK(esp_wifi_config_80211_tx_rate(_ifx, WIFI_PHY_RATE_11M_L));
         ESP_ERROR_CHECK(esp_wifi_start());
         ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
         //ESP_ERROR_CHECK(esp_wifi_set_bandwidth(WIFI_IF_AP, WIFI_BW_HT20));
@@ -120,7 +95,7 @@ public:
         ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
         ESP_ERROR_CHECK(esp_wifi_start());
 
-        start_file_server("/sdcard");
+        //start_file_server("/sdcard");
     };
 
     esp_err_t esp_netif_set_static_ip(esp_netif_t *netif){
@@ -132,7 +107,7 @@ public:
         ip.netmask.addr = ipaddr_addr("255.255.255.0");
         ip.gw.addr = ipaddr_addr("192.168.4.1");
         if (esp_netif_set_ip_info(netif, &ip) != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to set ip info");
+            //ESP_LOGE(TAG, "Failed to set ip info");
             esp_netif_dhcps_start(netif);
             return ESP_FAIL;
         }
@@ -333,13 +308,15 @@ public:
     //         }
     //     }
 
-    // #define APPLY(n1, n2, type) \
-    //     if (forceCameraSettings || (dst.camera.n1 != src.camera.n1)) \
-    //     { \
-    //         LOG("Camera " #n1 " from %d to %d\n", (int)dst.camera.n1, (int)src.camera.n1); \
-    //         sensor_t* s = esp_camera_sensor_get(); \
-    //         s->set_##n2(s, (type)src.camera.n1); \
-    //     }
+    /* 
+    #define APPLY(n1, n2, type) \
+        if (forceCameraSettings || (dst.camera.n1 != src.camera.n1)) \
+        { \
+            LOG("Camera " #n1 " from %d to %d\n", (int)dst.camera.n1, (int)src.camera.n1); \
+            sensor_t* s = esp_camera_sensor_get(); \
+            s->set_##n2(s, (type)src.camera.n1); \
+        }
+    */
 
     //     if ( src.camera.quality != 0 )
     //     {
@@ -475,7 +452,7 @@ public:
     IRAM_ATTR static void handle_ground2air_config_packet(Ground2Air_Config_Packet& src){
         //handle settings not related to camera sensor setup.
         //camera sensor settings are processed in camera_data_available() callback
-        handle_ground2air_config_packetEx1(src);
+    //    handle_ground2air_config_packetEx1(src);
     }
 
     IRAM_ATTR static void handle_ground2air_data_packet(Ground2Air_Data_Packet& src){
@@ -500,103 +477,90 @@ public:
 
 
 
-    IRAM_ATTR void send_air2ground_osd_packet(){
-        uint8_t* packet_data = s_fec_encoder.get_encode_packet_data(true);
-
-        if(!packet_data){
-            LOG("no data buf!\n");
-            return ;
-        }
+    IRAM_ATTR void send_air2ground_osd_packet(uint8_t* packet_data){
 
         Air2Ground_OSD_Packet& packet = *(Air2Ground_OSD_Packet*)packet_data;
         packet.type = Air2Ground_Header::Type::OSD;
         packet.size = sizeof(Air2Ground_OSD_Packet);
-        packet.pong = s_ground2air_config_packet.ping;
+        packet.pong = 0;//s_ground2air_config_packet.ping;
         packet.version = PACKET_VERSION;
         packet.crc = 0;
 
-    #ifdef DVR_SUPPORT
-        packet.stats.SDDetected = s_sd_initialized ? 1: 0;
-        packet.stats.SDSlow = s_last_stats.sd_drops ? 1: 0;
-        packet.stats.SDError = SDError ? 1: 0;
-    #else
-        packet.stats.SDDetected = 0;
-        packet.stats.SDSlow = 0;
-        packet.stats.SDError = 0;
-    #endif    
-        packet.stats.curr_wifi_rate = (uint8_t)s_wlan_rate;
+    // #ifdef DVR_SUPPORT
+    //     packet.stats.SDDetected = s_sd_initialized ? 1: 0;
+    //     packet.stats.SDSlow = s_last_stats.sd_drops ? 1: 0;
+    //     packet.stats.SDError = SDError ? 1: 0;
+    // #else
+    //     packet.stats.SDDetected = 0;
+    //     packet.stats.SDSlow = 0;
+    //     packet.stats.SDError = 0;
+    // #endif    
+    //     packet.stats.curr_wifi_rate = (uint8_t)s_wlan_rate;
 
-        packet.stats.wifi_queue_min = s_min_wlan_outgoing_queue_usage_seen;
-        packet.stats.wifi_queue_max = s_max_wlan_outgoing_queue_usage;
-        packet.stats.air_record_state = s_air_record ? 1 : 0;
+    //     packet.stats.wifi_queue_min = s_min_wlan_outgoing_queue_usage_seen;
+    //     packet.stats.wifi_queue_max = s_max_wlan_outgoing_queue_usage;
+    //     packet.stats.air_record_state = s_air_record ? 1 : 0;
 
-        packet.stats.wifi_ovf = 0;
-        if ( s_wifi_ovf_time > 0 )
-        {
-            int64_t t = esp_timer_get_time();
-            t -= s_wifi_ovf_time;
-            if ( t < 1000000 )
-            {
-                packet.stats.wifi_ovf = 1;
-            }
-            else
-            {
-                s_wifi_ovf_time = 0;
-            }
-        }
+    //     packet.stats.wifi_ovf = 0;
+    //     if ( s_wifi_ovf_time > 0 )
+    //     {
+    //         int64_t t = esp_timer_get_time();
+    //         t -= s_wifi_ovf_time;
+    //         if ( t < 1000000 )
+    //         {
+    //             packet.stats.wifi_ovf = 1;
+    //         }
+    //         else
+    //         {
+    //             s_wifi_ovf_time = 0;
+    //         }
+    //     }
         
-        packet.stats.SDFreeSpaceGB16 = SDFreeSpaceGB16;
-        packet.stats.SDTotalSpaceGB16 = SDTotalSpaceGB16;
-        packet.stats.curr_quality = s_quality;
+    //     packet.stats.SDFreeSpaceGB16 = SDFreeSpaceGB16;
+    //     packet.stats.SDTotalSpaceGB16 = SDTotalSpaceGB16;
+    //     packet.stats.curr_quality = s_quality;
 
-    #ifdef SENSOR_OV5640
-        packet.stats.isOV5640 = 1;
-    #else
-        packet.stats.isOV5640 = 0;
-    #endif    
+    // #ifdef SENSOR_OV5640
+    //     packet.stats.isOV5640 = 1;
+    // #else
+    //     packet.stats.isOV5640 = 0;
+    // #endif    
 
-        packet.stats.outPacketRate = s_last_stats.outPacketCounter;
-        packet.stats.inPacketRate = s_last_stats.inPacketCounter;
-        packet.stats.inRejectedPacketRate = s_last_stats.inRejectedPacketCounter;
-        packet.stats.rssiDbm = s_last_stats.rssiDbm;
-        packet.stats.noiseFloorDbm = s_last_stats.noiseFloorDbm;
-        packet.stats.captureFPS = s_actual_capture_fps;
-        packet.stats.cam_frame_size_min = s_last_stats.camera_frame_size_min;
-        packet.stats.cam_frame_size_max = s_last_stats.camera_frame_size_max;
-        packet.stats.cam_ovf_count = cam_ovf_count;
-        packet.stats.inMavlinkRate = s_last_stats.in_telemetry_data;
-        packet.stats.outMavlinkRate = s_last_stats.out_telemetry_data;
+    //     packet.stats.outPacketRate = s_last_stats.outPacketCounter;
+    //     packet.stats.inPacketRate = s_last_stats.inPacketCounter;
+    //     packet.stats.inRejectedPacketRate = s_last_stats.inRejectedPacketCounter;
+    //     packet.stats.rssiDbm = s_last_stats.rssiDbm;
+    //     packet.stats.noiseFloorDbm = s_last_stats.noiseFloorDbm;
+    //     packet.stats.captureFPS = s_actual_capture_fps;
+    //     packet.stats.cam_frame_size_min = s_last_stats.camera_frame_size_min;
+    //     packet.stats.cam_frame_size_max = s_last_stats.camera_frame_size_max;
+    //     packet.stats.cam_ovf_count = cam_ovf_count;
+    //     packet.stats.inMavlinkRate = s_last_stats.in_telemetry_data;
+    //     packet.stats.outMavlinkRate = s_last_stats.out_telemetry_data;
 
-        memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
+    //     memcpy( &packet.buffer, g_osd.getBuffer(), OSD_BUFFER_SIZE );
         
-        packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
-
-        if (!s_fec_encoder.flush_encode_packet(true))
-        {
-            LOG("Fec codec busy\n");
-            s_stats.wlan_error_count++;
-    #ifdef PROFILE_CAMERA_DATA    
-            s_profiler.toggle(PF_CAMERA_FEC_OVF);
-    #endif
-        }
-    }
+    //     packet.crc = crc8(0, &packet, sizeof(Air2Ground_OSD_Packet));
+    //     }
+    };
 
     IRAM_ATTR void send_air2ground_video_packet(bool last, uint8_t* packet_data, size_t packet_size){
         Air2Ground_Video_Packet& packet = *(Air2Ground_Video_Packet*)packet_data;
-        packet.type = Air2Ground_Header::Type::Video;
-        packet.resolution = s_ground2air_config_packet.camera.resolution; /*NEED TO REMOVE*/
-        packet.frame_index = _frame_index; /*NEED TO CHANGE*/
-        packet.part_index = _part_index;
-        packet.last_part = last ? 1 : 0;
-        packet.size = packet_size + sizeof(Air2Ground_Video_Packet); /*NEED TO REMOVE*/
-        packet.pong = s_ground2air_config_packet.ping; 
-        packet.version = PACKET_VERSION; /*NEED TO REMOVE*/
-        //packet.crc = 0; /*NEED TO REMOVE*/
-        packet.crc = crc8(0, &packet, sizeof(Air2Ground_Video_Packet)); /*NEED TO REMOVE*/
+            packet.type = Air2Ground_Header::Type::Video;
+            packet.resolution = (Resolution) 0;//s_ground2air_config_packet.camera.resolution; /*NEED TO REMOVE*/
+            packet.frame_index = _frame_index; /*NEED TO CHANGE*/
+            packet.part_index = _part_index;
+            packet.last_part = last ? 1 : 0;
+            packet.size = packet_size + sizeof(Air2Ground_Video_Packet); /*NEED TO REMOVE*/
+            packet.pong = 0; 
+            packet.version = PACKET_VERSION; /*NEED TO REMOVE*/
+            //packet.crc = 0; /*NEED TO REMOVE*/
+            packet.crc = crc8(0, &packet, sizeof(Air2Ground_Video_Packet)); /*NEED TO REMOVE*/
+
+        _injection(packet_data, packet_size); //TODO: return error
+    };
 
 
-
-    }
 
 private:
     struct Stats{
@@ -632,11 +596,8 @@ private:
 
     wifi_interface_t _ifx = WIFI_IF_AP;
 
-    IRAM_ATTR void _injection(uint8_t* data, size_t len){
+    IRAM_ATTR esp_err_t _injection(uint8_t* data, size_t len){ //need to have WLAN_IEEE_HEADER_SIZE empty at the front of the data
         memcpy(data, WLAN_IEEE_HEADER_AIR2GROUND, WLAN_IEEE_HEADER_SIZE);
-        esp_err_t res = ESP_ERR_NO_MEM;
-        while (res == ESP_ERR_NO_MEM){
-            res = esp_wifi_80211_tx(_ifx, data, WLAN_IEEE_HEADER_SIZE + len, false);
-        }
+        return esp_wifi_80211_tx(_ifx, data, WLAN_IEEE_HEADER_SIZE + len, false);
     };
 };

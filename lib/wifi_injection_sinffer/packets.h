@@ -1,6 +1,8 @@
 #pragma once
 
 //#include "structures.h"
+//#include "wifi.h"
+#include <esp_wifi_types.h>
 
 #define DEFAULT_WIFI_CHANNEL 13
 #define FW_VERSION "0.4.2"
@@ -8,20 +10,57 @@
 
 #pragma pack(push, 1) // exact fit - no padding
 
-TVMode vmodes[] = {
-    {320,240,60,60,60,60},//QVGA,   //320x240
-    {400,296,60,60,60,60},//CIF,    //400x296
-    {480,320,30,30,30,30},//HVGA,   //480x320
-    {640,480,30,30,40,50},//VGA,    //640x480
-    {640,360,30,30,40,50},//VGA16,    //640x360
-    {800,600,30,30,30,30},//SVGA,   //800x600
-    {800,456,30,30,40,50},//SVGA16,  //800x456
-    {1024,768,12,30,12,30},//XGA,    //1024x768
-    {1024,576,12,30,12,30},//XGA16,    //1024x576
-    {1280,960,12,30,12,30},//SXGA,   //1280x960
-    {1280,720,12,30,12,30},//HD,   //1280x720
-    {1600,1200,10,10,10,10}//UXGA   //1600x1200
+
+// typedef struct{
+//     uint16_t width;
+//     uint16_t height;
+//     uint8_t FPS2640;
+//     uint8_t FPS5640;
+//     uint8_t highFPS2640;
+//     uint8_t highFPS5640;
+// } TVMode;
+
+// TVMode vmodes[] = {
+//     {320,240,60,60,60,60},//QVGA,   //320x240
+//     {400,296,60,60,60,60},//CIF,    //400x296
+//     {480,320,30,30,30,30},//HVGA,   //480x320
+//     {640,480,30,30,40,50},//VGA,    //640x480
+//     {640,360,30,30,40,50},//VGA16,    //640x360
+//     {800,600,30,30,30,30},//SVGA,   //800x600
+//     {800,456,30,30,40,50},//SVGA16,  //800x456
+//     {1024,768,12,30,12,30},//XGA,    //1024x768
+//     {1024,576,12,30,12,30},//XGA16,    //1024x576
+//     {1280,960,12,30,12,30},//SXGA,   //1280x960
+//     {1280,720,12,30,12,30},//HD,   //1280x720
+//     {1600,1200,10,10,10,10}//UXGA   //1600x1200
+// };
+
+//https://www.geeksforgeeks.org/ieee-802-11-mac-frame/
+//https://en.wikipedia.org/wiki/802.11_Frame_Types
+//each byte shifted from lower bits
+//08 = 00 version, 01 frame type, 0000 subtype
+uint8_t WLAN_IEEE_HEADER_AIR2GROUND[]={
+  0x08, 0x00,//frame control
+  0x00, 0x00,//2-3: Duration
+  0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF,// 4-9: Destination address (broadcast)
+  0x11, 0x22, 0x33, 0x44, 0x55, 0x66,// 10-15: Source address
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00,// 16-21: BSSID
+  0x10, 0x86// 22-23: Sequence / fragment number
 };
+
+constexpr uint8_t WLAN_IEEE_HEADER_GROUND2AIR[]={
+  0x08, 0x01, 0x00, 0x00,
+  0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+  0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
+  0x66, 0x55, 0x44, 0x33, 0x22, 0x11,
+  0x10, 0x86
+};
+
+constexpr size_t WLAN_IEEE_HEADER_SIZE = sizeof(WLAN_IEEE_HEADER_AIR2GROUND);
+constexpr size_t WLAN_MAX_PACKET_SIZE = 1500;
+constexpr size_t WLAN_MAX_PAYLOAD_SIZE = WLAN_MAX_PACKET_SIZE - WLAN_IEEE_HEADER_SIZE;
+
+static_assert(WLAN_IEEE_HEADER_SIZE == 24, "");
 
 static constexpr size_t AIR2GROUND_MTU = WLAN_MAX_PAYLOAD_SIZE - 6; //6 is the fec header size
 
@@ -64,14 +103,6 @@ enum class Resolution : uint8_t{
     COUNT
 };
 
-typedef struct{
-    uint16_t width;
-    uint16_t height;
-    uint8_t FPS2640;
-    uint8_t FPS5640;
-    uint8_t highFPS2640;
-    uint8_t highFPS5640;
-} TVMode;
 
 struct Ground2Air_Config_Packet: Ground2Air_Header{
     uint8_t ping = 0; //used for latency measurement

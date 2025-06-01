@@ -49,6 +49,7 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "esp_event.h": "c",
-        "ll_cam.h": "c"
+        "ll_cam.h": "c",
+        "cam_hal.h": "c"
     }
 }

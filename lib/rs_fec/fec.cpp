@@ -1,4 +1,3 @@
-#pragma once
 #include "fec.h"
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"

@@ -91,11 +91,6 @@ ZFE_FEC fec;
 FEC_Block_buffer fec_buf;
 
 
-void applyAdaptiveQuality(){
-    sensor_t* s = esp_camera_sensor_get(); 
-    //s->set_quality(s, s_quality); 
-}
-
 #define coding_k 6
 #define coding_n 8
 

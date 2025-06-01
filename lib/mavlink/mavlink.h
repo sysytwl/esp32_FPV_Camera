@@ -1,4 +1,4 @@
-
+#pragma once
 
 //constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = AIR2GROUND_MTU - sizeof(Air2Ground_Data_Packet);
 //constexpr size_t MAX_TELEMETRY_PAYLOAD_SIZE = 512;

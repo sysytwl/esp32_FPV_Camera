@@ -1,3 +1,4 @@
+#pragma once
 void initialize_status_led(){
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_INTR_DISABLE;

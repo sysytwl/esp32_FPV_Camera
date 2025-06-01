@@ -39,7 +39,7 @@
 //https://en.wikipedia.org/wiki/802.11_Frame_Types
 //each byte shifted from lower bits
 //08 = 00 version, 01 frame type, 0000 subtype
-uint8_t WLAN_IEEE_HEADER_AIR2GROUND[]={
+constexpr uint8_t WLAN_IEEE_HEADER_AIR2GROUND[]={
   0x08, 0x00,//frame control
   0x00, 0x00,//2-3: Duration
   0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0xFF,// 4-9: Destination address (broadcast)

@@ -67,10 +67,9 @@ static constexpr unsigned BLOCK_NUMS[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
 
 
 class ZFE_FEC{
-private:
+public:
   typedef unsigned char gf;
 
-public:
   struct fec_t {
     unsigned long magic;
     unsigned short k, n;                     /* parameters of the code */
@@ -100,19 +99,19 @@ public:
 
   void fec_free (fec_t *p);
 
-/**
- * @param k the number of blocks required to reconstruct
- * @param m the total number of blocks created
- * @param retval the fec_t struct pointer
- */
-void fec_new(unsigned short k, unsigned short n, fec_t *retval);
+  /**
+   * @param k the number of blocks required to reconstruct
+   * @param m the total number of blocks created
+   * @param retval the fec_t struct pointer
+   */
+  void fec_new(unsigned short k, unsigned short n, fec_t *retval);
 
-private:
+
   int fec_initialized = 0;
 
-  static gf gf_exp[510];  /* index->poly form conversion table    */
-  static gf gf_log[256];  /* poly->index form conversion table    */
-  static gf inverse[256]; /* inverse of field elem.               */ /* inv[\alpha**i]=\alpha**(GF_SIZE-i-1) */
+  uint8_t gf_exp[510];  /* index->poly form conversion table    */
+  gf gf_log[256];  /* poly->index form conversion table    */
+  gf inverse[256]; /* inverse of field elem.               */ /* inv[\alpha**i]=\alpha**(GF_SIZE-i-1) */
 
   /*
   * gf_mul(x,y) multiplies two numbers.  It is much faster to use a
@@ -124,11 +123,13 @@ private:
   * multiplication is held in a local variable declared with USE_GF_MULC . See
   * usage in _addmul1().
   */
-  typedef gf gf_mul_table_t[256][256];
+  typedef uint8_t gf_mul_table_t[256][256];
   typedef gf_mul_table_t* gf_mul_table_p;
 
-  static gf_mul_table_p gf_mul_table;
+  gf_mul_table_p gf_mul_table;
 
+
+  private:
   /*
   * Primitive polynomials - see Lin & Costello, Appendix A,
   static const char * const Pp;

@@ -62,7 +62,7 @@ public:
         // ESP_ERROR_CHECK(esp_wifi_set_promiscuous_rx_cb(packet_received_cb));
         // ESP_ERROR_CHECK(esp_wifi_set_promiscuous(true));
 
-        esp_wifi_get_mac(WIFI_IF_AP, WLAN_IEEE_HEADER_AIR2GROUND + 10);
+        esp_wifi_get_mac(WIFI_IF_AP, (uint8_t *)(WLAN_IEEE_HEADER_AIR2GROUND + 10));
     };
     
     void set_wifi_fixed_rate(wifi_phy_rate_t value){

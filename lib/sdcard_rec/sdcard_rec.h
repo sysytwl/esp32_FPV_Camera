@@ -1,4 +1,4 @@
-
+#pragma once
 static int64_t s_video_last_sent_tp = esp_timer_get_time();
 static int64_t s_video_target_frame_dt = 0;
 static uint8_t s_max_wlan_outgoing_queue_usage = 0;

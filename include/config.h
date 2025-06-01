@@ -1,4 +1,4 @@
-
+#pragma once
 //#define TX_COMPLETION_CB
 #if defined(CAMERA_MODEL_WROVER_KIT)
 #define PWDN_GPIO_NUM    -1

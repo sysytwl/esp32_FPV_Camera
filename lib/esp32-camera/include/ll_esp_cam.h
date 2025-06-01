@@ -5,6 +5,13 @@
 #include "sdkconfig.h"
 #include "esp_log.h"
 
+#if __has_include("esp_private/periph_ctrl.h")
+# include "esp_private/periph_ctrl.h"
+#endif
+#if __has_include("esp_private/gdma.h")
+# include "esp_private/gdma.h"
+#endif
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -24,12 +31,55 @@
 
 class ll_esp_cam {
 public:
+
+
+    /**
+     * @brief Starts the low-level camera interface with the specified DMA buffer size.
+     *
+     * This virtual function initializes and starts the camera hardware, allocating
+     * the necessary DMA buffers for image capture. It should be implemented by derived
+     * classes to handle hardware-specific startup procedures.
+     *
+     * @param dma_buffer_size The size (in bytes) of the DMA buffer to be used for image data transfer.
+     * @return true if the camera was successfully started; false otherwise.
+     */
+    virtual bool ll_cam_start(uint32_t dma_buffer_size);
+
+    /**
+     * @brief Configures the camera data and synchronization pins.
+     *
+     * This function sets the pin assignments for the camera interface, including the VSYNC, PCLK, and data pins (D0-D7).
+     * It also allows specifying whether the VSYNC signal should be inverted.
+     *
+     * @param vsync_invert  Set to 1 to invert the VSYNC signal, 0 for normal polarity.
+     * @param pin_vsync     GPIO number for the VSYNC signal.
+     * @param pin_pclk      GPIO number for the PCLK (pixel clock) signal.
+     * @param pin_d0        GPIO number for data line D0.
+     * @param pin_d1        GPIO number for data line D1.
+     * @param pin_d2        GPIO number for data line D2.
+     * @param pin_d3        GPIO number for data line D3.
+     * @param pin_d4        GPIO number for data line D4.
+     * @param pin_d5        GPIO number for data line D5.
+     * @param pin_d6        GPIO number for data line D6.
+     * @param pin_d7        GPIO number for data line D7.
+     * @return
+     *     - ESP_OK on success
+     *     - Appropriate error code otherwise
+     */
+    virtual esp_err_t ll_cam_set_pin(uint8_t vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7);
+
+    /**
+     * @brief Configures the I2S0.
+     */
+    virtual void ll_cam_config();
+
     virtual bool ll_cam_stop(cam_obj_t *cam);
-    virtual bool ll_cam_start(cam_obj_t *cam, int frame_pos);
-    virtual esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config);
+    
+
+
     virtual esp_err_t ll_cam_deinit(cam_obj_t *cam);
     virtual void ll_cam_vsync_intr_enable(cam_obj_t *cam, bool en);
-    virtual esp_err_t ll_cam_set_pin(cam_obj_t *cam, const camera_config_t *config);
+
     virtual esp_err_t ll_cam_init_isr(cam_obj_t *cam);
     virtual void ll_cam_do_vsync(cam_obj_t *cam);
     virtual uint8_t ll_cam_get_dma_align(cam_obj_t *cam);
@@ -50,14 +100,9 @@ private:
 
 
     uint32_t dma_bytes_per_item;
-    uint32_t dma_buffer_size;
     uint32_t dma_buffer_cnt;
     uint32_t dma_node_buffer_size;
     uint32_t dma_node_cnt;
-
-    //for JPEG mode
-    lldesc_t *dma; //DMA descriptors
-    uint8_t  *dma_buffer; //DMA buffer
 
     QueueHandle_t event_queue;
     //QueueHandle_t frame_buffer_queue;
@@ -67,10 +112,6 @@ private:
     uint8_t dma_num;//ESP32-S3
     intr_handle_t dma_intr_handle;//ESP32-S3
 
-
-    //uint8_t jpeg_mode;
-    uint8_t vsync_pin;
-    uint8_t vsync_invert;
     //uint32_t frame_cnt;
     //uint32_t recv_size;
     //bool swap_data;

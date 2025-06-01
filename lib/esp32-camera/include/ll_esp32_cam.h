@@ -26,13 +26,6 @@
         #include "rom/lldesc.h"
     #endif
 
-    #if __has_include("esp_private/periph_ctrl.h")
-    # include "esp_private/periph_ctrl.h"
-    #endif
-    #if __has_include("esp_private/gdma.h")
-    # include "esp_private/gdma.h"
-    #endif
-
     #include "soc/i2s_struct.h"
     #include "esp_idf_version.h"
 
@@ -76,48 +69,6 @@
 
 class ll_esp32_cam : public ll_esp_cam {
 public:
-
-typedef union {
-    struct {
-        uint32_t sample2:8;
-        uint32_t unused2:8;
-        uint32_t sample1:8;
-        uint32_t unused1:8;
-    };
-    uint32_t val;
-} dma_elem_t;
-
-
-
-static size_t ll_cam_bytes_per_sample(i2s_sampling_mode_t mode){
-    switch(mode) {
-    case SM_0A00_0B00:
-        return 4;
-    case SM_0A0B_0B0C:
-        return 4;
-    case SM_0A0B_0C0D:
-        return 2;
-    default:
-        assert(0 && "invalid sampling mode");
-        return 0;
-    }
-}
-
-static size_t IRAM_ATTR ll_cam_dma_filter_jpeg(uint8_t* dst, const uint8_t* src, size_t len){
-    const dma_elem_t* dma_el = (const dma_elem_t*)src;
-    size_t elements = len / sizeof(dma_elem_t);
-    size_t end = elements / 4;
-    // manually unrolling 4 iterations of the loop here
-    for (size_t i = 0; i < end; ++i) {
-        dst[0] = dma_el[0].sample1;
-        dst[1] = dma_el[1].sample1;
-        dst[2] = dma_el[2].sample1;
-        dst[3] = dma_el[3].sample1;
-        dma_el += 4;
-        dst += 4;
-    }
-    return elements;
-}
 
 static void IRAM_ATTR ll_cam_vsync_isr(void *arg){
     cam_obj_t *cam = (cam_obj_t *)arg;
@@ -169,7 +120,7 @@ esp_err_t ll_cam_deinit(cam_obj_t *cam){
     return ESP_OK;
 }
 
-bool ll_cam_start(cam_obj_t *cam, int frame_pos){
+bool ll_cam_start(uint32_t dma_buffer_size) override {
     I2S0.conf.rx_start = 0;
 
     I2S_ISR_ENABLE(in_suc_eof);
@@ -185,15 +136,15 @@ bool ll_cam_start(cam_obj_t *cam, int frame_pos){
     I2S0.lc_conf.ahbm_rst = 1;
     I2S0.lc_conf.ahbm_rst = 0;
 
-    I2S0.rx_eof_num = cam->dma_buffer_size / sizeof(dma_elem_t);
-    I2S0.in_link.addr = ((uint32_t)&cam->dma[0]) & 0xfffff;
+    I2S0.rx_eof_num = dma_buffer_size / sizeof(dma_elem_t);
+    I2S0.in_link.addr = ((uint32_t)&_dma[0]) & 0xfffff;
 
     I2S0.in_link.start = 1;
     I2S0.conf.rx_start = 1;
     return true;
 }
 
-esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config){
+void ll_cam_config() override {
     // Enable and configure I2S peripheral
     periph_module_enable(PERIPH_I2S0_MODULE);
 
@@ -231,8 +182,6 @@ esp_err_t ll_cam_config(cam_obj_t *cam, const camera_config_t *config){
     I2S0.sample_rate_conf.rx_bits_mod = 0;
     I2S0.timing.val = 0;
     I2S0.timing.rx_dsync_sw = 1;
-
-    return ESP_OK;
 }
 
 void ll_cam_vsync_intr_enable(cam_obj_t *cam, bool en){
@@ -243,41 +192,42 @@ void ll_cam_vsync_intr_enable(cam_obj_t *cam, bool en){
     }
 }
 
-esp_err_t ll_cam_set_pin(cam_obj_t *cam, const camera_config_t *config){
+esp_err_t ll_cam_set_pin(uint8_t vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7) override {
     gpio_config_t io_conf = {0};
-    io_conf.intr_type = cam->vsync_invert ? GPIO_PIN_INTR_NEGEDGE : GPIO_PIN_INTR_POSEDGE;
-    io_conf.pin_bit_mask = 1ULL << config->pin_vsync;
+    io_conf.intr_type = vsync_invert ? GPIO_INTR_NEGEDGE : GPIO_INTR_POSEDGE;
+    io_conf.pin_bit_mask = 1ULL << pin_vsync;
     io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pull_up_en = 1;
-    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+    io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
     gpio_config(&io_conf);
+
     gpio_install_isr_service(ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM);
-    gpio_isr_handler_add(config->pin_vsync, ll_cam_vsync_isr, cam); // vsync isr
-    gpio_intr_disable(config->pin_vsync);
+    gpio_isr_handler_add((gpio_num_t)pin_vsync, ll_cam_vsync_isr, cam); // vsync isr
+    gpio_intr_disable((gpio_num_t)pin_vsync);
 
-    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[config->pin_pclk], PIN_FUNC_GPIO);
-    gpio_set_direction(config->pin_pclk, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(config->pin_pclk, GPIO_FLOATING);
-    gpio_matrix_in(config->pin_pclk, I2S0I_WS_IN_IDX, false);
+    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_pclk], PIN_FUNC_GPIO);
+    gpio_set_direction((gpio_num_t)pin_pclk, GPIO_MODE_INPUT);
+    gpio_set_pull_mode((gpio_num_t)pin_pclk, GPIO_FLOATING);
+    gpio_matrix_in(pin_pclk, I2S0I_WS_IN_IDX, false);
 
-    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[config->pin_vsync], PIN_FUNC_GPIO);
-    gpio_set_direction(config->pin_vsync, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(config->pin_vsync, GPIO_FLOATING);
-    gpio_matrix_in(config->pin_vsync, I2S0I_V_SYNC_IDX, false);
+    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_vsync], PIN_FUNC_GPIO);
+    gpio_set_direction((gpio_num_t)pin_vsync, GPIO_MODE_INPUT);
+    gpio_set_pull_mode((gpio_num_t)pin_vsync, GPIO_FLOATING);
+    gpio_matrix_in(pin_vsync, I2S0I_V_SYNC_IDX, false);
 
-    PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[config->pin_href], PIN_FUNC_GPIO);
-    gpio_set_direction(config->pin_href, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(config->pin_href, GPIO_FLOATING);
-    gpio_matrix_in(config->pin_href, I2S0I_H_SYNC_IDX, false);
+    //PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_href], PIN_FUNC_GPIO);
+    //gpio_set_direction((gpio_num_t)pin_href, GPIO_MODE_INPUT);
+    //gpio_set_pull_mode((gpio_num_t)pin_href, GPIO_FLOATING);
+    //gpio_matrix_in(pin_href, I2S0I_H_SYNC_IDX, false);
     gpio_matrix_in(0x38, I2S0I_H_ENABLE_IDX, false); // transmission_start = (I2Sn_H_SYNC == 1)&&(I2Sn_V_SYNC == 1)&&(I2Sn_H_ENABLE == 1)
 
     int data_pins[8] = {
-        config->pin_d0, config->pin_d1, config->pin_d2, config->pin_d3, config->pin_d4, config->pin_d5, config->pin_d6, config->pin_d7,
+        pin_d0, pin_d1, pin_d2, pin_d3, pin_d4, pin_d5, pin_d6, pin_d7,
     };
     for (int i = 0; i < 8; i++) {
         PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[data_pins[i]], PIN_FUNC_GPIO);
-        gpio_set_direction(data_pins[i], GPIO_MODE_INPUT);
-        gpio_set_pull_mode(data_pins[i], GPIO_FLOATING);
+        gpio_set_direction((gpio_num_t)data_pins[i], GPIO_MODE_INPUT);
+        gpio_set_pull_mode((gpio_num_t)data_pins[i], GPIO_FLOATING);
         gpio_matrix_in(data_pins[i], I2S0I_DATA_IN0_IDX + i, false);
     }
 
@@ -316,6 +266,16 @@ size_t IRAM_ATTR ll_cam_memcpy(cam_obj_t *cam, uint8_t *out, const uint8_t *in, 
 
 private:
 
+    typedef union {
+        struct {
+            uint32_t sample2:8;
+            uint32_t unused2:8;
+            uint32_t sample1:8;
+            uint32_t unused1:8;
+        };
+        uint32_t val;
+    } dma_elem_t;
+
     typedef enum {
         /* camera sends byte sequence: s1, s2, s3, s4, ...
         * fifo receives: 00 s1 00 s2, 00 s2 00 s3, 00 s3 00 s4, ...
@@ -330,9 +290,40 @@ private:
         */
         SM_0A00_0B00 = 3,
     } i2s_sampling_mode_t;
-
     static i2s_sampling_mode_t sampling_mode;
 
+    lldesc_t *_dma; //DMA descriptors
+    uint8_t  *_dma_buffer; //DMA buffer
+
+    static size_t ll_cam_bytes_per_sample(i2s_sampling_mode_t mode){
+        switch(mode) {
+        case SM_0A00_0B00:
+            return 4;
+        case SM_0A0B_0B0C:
+            return 4;
+        case SM_0A0B_0C0D:
+            return 2;
+        default:
+            assert(0 && "invalid sampling mode");
+            return 0;
+        }
+    }
+
+    static size_t IRAM_ATTR ll_cam_dma_filter_jpeg(uint8_t* dst, const uint8_t* src, size_t len){
+        const dma_elem_t* dma_el = (const dma_elem_t*)src;
+        size_t elements = len / sizeof(dma_elem_t);
+        size_t end = elements / 4;
+        // manually unrolling 4 iterations of the loop here
+        for (size_t i = 0; i < end; ++i) {
+            dst[0] = dma_el[0].sample1;
+            dst[1] = dma_el[1].sample1;
+            dst[2] = dma_el[2].sample1;
+            dst[3] = dma_el[3].sample1;
+            dma_el += 4;
+            dst += 4;
+        }
+        return elements;
+    }
 };
 
 inline ll_esp32_cam::i2s_sampling_mode_t ll_esp32_cam::sampling_mode = ll_esp32_cam::i2s_sampling_mode_t::SM_0A00_0B00;

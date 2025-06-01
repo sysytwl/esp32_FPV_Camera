@@ -29,7 +29,13 @@ static const char *TAG = "cam";
 /**
  * @brief define for if chip supports camera
  */
-#if !(CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S3)
+#if CONFIG_IDF_TARGET_ESP32
+    #include "ll_esp32_cam.h"
+    ll_esp32_cam ll_cam;
+#elif CONFIG_IDF_TARGET_ESP32S3
+    #include "ll_esp32s3_cam.h"
+    ll_esp32s3_cam ll_cam;
+#else
 #error "This chip does not support."
 #endif
 
@@ -111,34 +117,16 @@ public:
 
         cam_obj_t *cam_obj = (cam_obj_t *)heap_caps_calloc(1, sizeof(cam_obj_t), MALLOC_CAP_DMA);
         CAM_CHECK(NULL != cam_obj, "lcd_cam object malloc error", ESP_ERR_NO_MEM);
-    
 
-        cam_obj->vsync_pin = pin_vsync;
-        cam_obj->vsync_invert = true;
+        ll_cam.ll_cam_set_pin(true, pin_vsync, pin_pclk, pin_d0, pin_d1, pin_d2, pin_d3, pin_d4, pin_d5, pin_d6, pin_d7);
+        ll_cam.ll_cam_config();
 
-        ll_cam_set_pin(cam_obj, config);
-        ret = ll_cam_config(cam_obj, config);
-        CAM_CHECK_GOTO(ret == ESP_OK, "ll_cam initialize failed", err);
-
-    ESP_LOGI(TAG, "cam init ok");
-    return ESP_OK;
-
-err:
-    free(cam_obj);
-    cam_obj = NULL;
-    return ESP_FAIL;
-
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Camera init failed with error 0x%x", err);
-        return err;
-    }
-
-    camera_model_t camera_model = CAMERA_NONE;
-    err = camera_probe(config, &camera_model);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "Camera probe failed with error 0x%x(%s)", err, esp_err_to_name(err));
-        goto fail;
-    }
+        camera_model_t camera_model = CAMERA_NONE;
+        err = camera_probe(config, &camera_model);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Camera probe failed with error 0x%x(%s)", err, esp_err_to_name(err));
+            goto fail;
+        }
 
     framesize_t frame_size = (framesize_t) config->frame_size;
     if (frame_size > camera_sensor[camera_model].max_size) {
@@ -177,6 +165,9 @@ err:
     return ESP_OK;
 
 fail:
+
+free(cam_obj);
+
     esp_camera_deinit();
     return err;
 
@@ -234,6 +225,112 @@ private:
     static camera_state_t *s_state;
 
     float _s_quality_framesize_K1=0, _s_quality_framesize_K2=1, _s_quality_framesize_K3=1;
+
+    static esp_err_t camera_probe(const camera_config_t *config, camera_model_t *out_camera_model){
+        esp_err_t ret = ESP_OK;
+        *out_camera_model = CAMERA_NONE;
+        if (s_state != NULL) {
+            return ESP_ERR_INVALID_STATE;
+        }
+
+        s_state = (camera_state_t *) calloc(sizeof(camera_state_t), 1);
+        if (!s_state) {
+            return ESP_ERR_NO_MEM;
+        }
+
+        if (pin_xclk >= 0) {
+            ESP_LOGD(TAG, "Enabling XCLK output");
+            CAMERA_ENABLE_OUT_CLOCK(config);
+        }
+
+        if (pin_sccb_sda != -1) {
+            ESP_LOGD(TAG, "Initializing SCCB");
+            ret = SCCB_Init(config->pin_sccb_sda, config->pin_sccb_scl);
+        } else {
+            ESP_LOGD(TAG, "Using existing I2C port");
+            ret = SCCB_Use_Port(config->sccb_i2c_port);
+        }
+
+        if(ret != ESP_OK) {
+            ESP_LOGE(TAG, "sccb init err");
+            goto err;
+        }
+
+        if (config->pin_pwdn >= 0) {
+            ESP_LOGD(TAG, "Resetting camera by power down line");
+            gpio_config_t conf = { 0 };
+            conf.pin_bit_mask = 1LL << config->pin_pwdn;
+            conf.mode = GPIO_MODE_OUTPUT;
+            gpio_config(&conf);
+
+            // carefull, logic is inverted compared to reset pin
+            gpio_set_level(config->pin_pwdn, 1);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+            gpio_set_level(config->pin_pwdn, 0);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        } else if (config->pin_reset >= 0) {
+            ESP_LOGD(TAG, "Resetting camera");
+            gpio_config_t conf = { 0 };
+            conf.pin_bit_mask = 1LL << config->pin_reset;
+            conf.mode = GPIO_MODE_OUTPUT;
+            gpio_config(&conf);
+
+            gpio_set_level(config->pin_reset, 0);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+            gpio_set_level(config->pin_reset, 1);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        } else {
+            ESP_LOGE(TAG, "No Reset pin!");
+        }
+
+        ESP_LOGD(TAG, "Searching for camera address");
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+
+        uint8_t slv_addr = SCCB_Probe();
+
+        if (slv_addr == 0) {
+            ret = ESP_ERR_NOT_FOUND;
+            goto err;
+        }
+
+        ESP_LOGI(TAG, "Detected camera at address=0x%02x", slv_addr);
+        s_state->sensor.slv_addr = slv_addr;
+        s_state->sensor.xclk_freq_hz = config->xclk_freq_hz;
+
+        /**
+         * Read sensor ID and then initialize sensor
+         * Attention: Some sensors have the same SCCB address. Therefore, several attempts may be made in the detection process
+         */
+        sensor_id_t *id = &s_state->sensor.id;
+        for (size_t i = 0; i < sizeof(g_sensors) / sizeof(sensor_func_t); i++) {
+            if (g_sensors[i].detect(slv_addr, id)) {
+                camera_sensor_info_t *info = esp_camera_sensor_get_info(id);
+                if (NULL != info) {
+                    *out_camera_model = info->model;
+                    ESP_LOGI(TAG, "Detected %s camera", info->name);
+                    g_sensors[i].init(&s_state->sensor);
+                    break;
+                }
+            }
+        }
+
+        if (CAMERA_NONE == *out_camera_model) { //If no supported sensors are detected
+            ESP_LOGE(TAG, "Detected camera not supported.");
+            ret = ESP_ERR_NOT_SUPPORTED;
+            goto err;
+        }
+
+        ESP_LOGI(TAG, "Camera PID=0x%02x VER=0x%02x MIDL=0x%02x MIDH=0x%02x",
+                id->PID, id->VER, id->MIDH, id->MIDL);
+
+        ESP_LOGD(TAG, "Doing SW reset of sensor");
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+
+        return s_state->sensor.reset(&s_state->sensor);
+    err :
+        CAMERA_DISABLE_OUT_CLOCK();
+        return ret;
+    }
 
 };
 

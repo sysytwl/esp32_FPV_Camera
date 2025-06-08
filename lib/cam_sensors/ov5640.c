@@ -197,7 +197,7 @@ static int calc_sysclk(int xclk, bool pll_bypass, int pll_multiplier, int pll_sy
 
     unsigned int SYSCLK = PLL_CLK / 4;
 
-    //ESP_LOGI(TAG, "Calculated XVCLK: %d Hz, REFIN: %u Hz, VCO: %u Hz, PLL_CLK: %u Hz, SYSCLK: %u Hz, PCLK: %u Hz", xclk, REFIN, VCO, PLL_CLK, SYSCLK, PCLK);
+    ESP_LOGI(TAG, "Calculated XVCLK: %d Hz, REFIN: %u Hz, VCO: %u Hz, PLL_CLK: %u Hz, SYSCLK: %u Hz, PCLK: %u Hz", xclk, REFIN, VCO, PLL_CLK, SYSCLK, PCLK);
     return SYSCLK;
 }
 
@@ -210,7 +210,7 @@ static int set_pll(sensor_t *sensor, bool bypass, uint8_t multiplier, uint8_t sy
     if(multiplier > 127){
         multiplier &= 0xFE;//only even integers above 127
     }
-    //ESP_LOGI(TAG, "Set PLL: bypass: %u, multiplier: %u, sys_div: %u, pre_div: %u, root_2x: %u, pclk_root_div: %u, pclk_manual: %u, pclk_div: %u", bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
+    ESP_LOGI(TAG, "Set PLL: bypass: %u, multiplier: %u, sys_div: %u, pre_div: %u, root_2x: %u, pclk_root_div: %u, pclk_manual: %u, pclk_div: %u", bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
 
     calc_sysclk(sensor->xclk_freq_hz, bypass, multiplier, sys_div, pre_div, root_2x, pclk_root_div, pclk_manual, pclk_div);
 
@@ -275,26 +275,26 @@ static int set_pixformat(sensor_t *sensor, pixformat_t pixformat)
     const uint16_t (*regs)[2];
 
     switch (pixformat) {
-    // case PIXFORMAT_YUV422:
-    //     regs = sensor_fmt_yuv422;
-    //     break;
+    case PIXFORMAT_YUV422:
+        regs = sensor_fmt_yuv422;
+        break;
 
-    // case PIXFORMAT_GRAYSCALE:
-    //     regs = sensor_fmt_grayscale;
-    //     break;
+    case PIXFORMAT_GRAYSCALE:
+        regs = sensor_fmt_grayscale;
+        break;
 
-    // case PIXFORMAT_RGB565:
-    // case PIXFORMAT_RGB888:
-    //     regs = sensor_fmt_rgb565;
-    //     break;
+    case PIXFORMAT_RGB565:
+    case PIXFORMAT_RGB888:
+        regs = sensor_fmt_rgb565;
+        break;
 
     case PIXFORMAT_JPEG:
         regs = sensor_fmt_jpeg;
         break;
 
-    // case PIXFORMAT_RAW:
-    //     regs = sensor_fmt_raw;
-    //     break;
+    case PIXFORMAT_RAW:
+        regs = sensor_fmt_raw;
+        break;
 
     default:
         ESP_LOGE(TAG, "Unsupported pixformat: %u", pixformat);
@@ -338,7 +338,7 @@ static int set_image_options(sensor_t *sensor)
     }
 
     // H-Mirror
-    if (!sensor->status.hmirror) {
+    if (sensor->status.hmirror) {
         reg21 |= 0x06;
         reg4514_test |= 2;
     }
@@ -432,82 +432,6 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
     }
 
     if (sensor->pixformat == PIXFORMAT_JPEG) {
-#ifdef CONFIG_IDF_TARGET_ESP32S3
-        /*
-        //10MHz PCLK
-        uint8_t sys_mul = 200;
-        if(framesize < FRAMESIZE_QVGA || sensor->xclk_freq_hz == 16000000){
-            sys_mul = 160;
-        } else if(framesize < FRAMESIZE_XGA){
-            sys_mul = 180;
-        }
-        ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
-        Set PLL: bypass: 0, multiplier: sys_mul, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4
-        */
-
-        //https://patchwork.kernel.org/project/linux-media/patch/20181113130325.28975-2-maxime.ripard@bootlin.com/
-
-        //for XLCK=20Mhz
-        if (framesize == FRAMESIZE_SVGA ) //800x600
-        {
-            //ret = set_pll(sensor, false, 30, 1, 1, false, 3, true, 3); //10 mhz pclk
-            ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //20 mhz pclk
-        }
-        else if (framesize == FRAMESIZE_P_HD) //800x456
-        {
-            if (sensor->status.colorbar == 0 )
-            {
-                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //15.3 mhz pclk
-            }
-            else
-            {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //20 mhz pclk
-            }
-        }
-        else if (framesize == FRAMESIZE_VGA) //640x480
-        {
-            if (sensor->status.colorbar == 0 )
-            {
-                ret = set_pll(sensor, false, 30, 1, 1, false, 2, true, 3); //20 mhz pclk
-            }
-            else
-            {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); 
-            }
-        }
-        else if (framesize == FRAMESIZE_P_3MP) //640x360
-        {
-            if (sensor->status.colorbar == 0 )
-            {
-                ret = set_pll(sensor, false, 23, 1, 1, false, 2, true, 3); //15.3 mhz pclk
-            }
-            else
-            {
-                ret = set_pll(sensor, false, 40, 1, 1, false, 2, true, 4); //20 mhz pclk
-            }
-        }
-        else if (framesize == FRAMESIZE_XGA)  //1024x768 
-        {
-            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //15.3 mhz pclk 
-        }
-        else if (framesize == FRAMESIZE_P_FHD)  //1024x576 
-        {
-            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3);  //19.3 mhz pclk
-        }
-        else if (framesize == FRAMESIZE_SXGA)  //1280x960
-        {
-            ret = set_pll(sensor, false, 39, 1, 1, false, 2, true, 5); //15.6 mhz pclk
-        }
-        else if (framesize == FRAMESIZE_HD)  //1280x720 //19.3 mhz pclk
-        {
-            ret = set_pll(sensor, false, 29, 1, 1, false, 2, true, 3); 
-        }
-        else 
-        {
-            //ret = set_pll(sensor, false, 19, 1, 1, false, 3, true, 4); 
-            ret = set_pll(sensor, false, 19, 1, 1, false, 2, true, 3); 
-        }
-#else
         //10MHz PCLK
         uint8_t sys_mul = 200;
         if(framesize < FRAMESIZE_QVGA || sensor->xclk_freq_hz == 16000000){
@@ -517,7 +441,6 @@ static int set_framesize(sensor_t *sensor, framesize_t framesize)
         }
         ret = set_pll(sensor, false, sys_mul, 4, 2, false, 2, true, 4);
         //Set PLL: bypass: 0, multiplier: sys_mul, sys_div: 4, pre_div: 2, root_2x: 0, pclk_root_div: 2, pclk_manual: 1, pclk_div: 4
-#endif        
     } else {
         //ret = set_pll(sensor, false, 8, 1, 1, false, 1, true, 4);
         if (framesize > FRAMESIZE_HVGA) {
@@ -576,14 +499,11 @@ static int set_quality(sensor_t *sensor, int qs)
 static int set_colorbar(sensor_t *sensor, int enable)
 {
     int ret = 0;
-    /*
     ret = write_reg_bits(sensor->slv_addr, PRE_ISP_TEST_SETTING_1, TEST_COLOR_BAR, enable);
     if (ret == 0) {
         sensor->status.colorbar = enable;
         ESP_LOGD(TAG, "Set colorbar to: %d", enable);
     }
-    */
-   sensor->status.colorbar = enable;
     return ret;
 }
 
@@ -1138,8 +1058,7 @@ static int init_status(sensor_t *sensor)
     sensor->status.aec = !check_reg_mask(sensor->slv_addr, AEC_PK_MANUAL, AEC_PK_MANUAL_AEC_MANUALEN);
     sensor->status.hmirror = check_reg_mask(sensor->slv_addr, TIMING_TC_REG21, TIMING_TC_REG21_HMIRROR);
     sensor->status.vflip = check_reg_mask(sensor->slv_addr, TIMING_TC_REG20, TIMING_TC_REG20_VFLIP);
-//    sensor->status.colorbar = check_reg_mask(sensor->slv_addr, PRE_ISP_TEST_SETTING_1, TEST_COLOR_BAR);
-    sensor->status.colorbar = 0;
+    sensor->status.colorbar = check_reg_mask(sensor->slv_addr, PRE_ISP_TEST_SETTING_1, TEST_COLOR_BAR);
     sensor->status.bpc = check_reg_mask(sensor->slv_addr, 0x5000, 0x04);
     sensor->status.wpc = check_reg_mask(sensor->slv_addr, 0x5000, 0x02);
     sensor->status.raw_gma = check_reg_mask(sensor->slv_addr, 0x5000, 0x20);

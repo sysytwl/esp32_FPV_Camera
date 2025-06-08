@@ -382,7 +382,7 @@ const DRAM_ATTR uint8_t ov2640_settings_to_uxga[][2] = {
 const DRAM_ATTR uint8_t ov2640_settings_jpeg3[][2] = {
     {BANK_SEL, BANK_DSP},
     {RESET, RESET_JPEG | RESET_DVP},
-    {IMAGE_MODE, IMAGE_MODE_JPEG_EN /*| IMAGE_MODE_HREF_VSYNC*/}, // HREF = VSYNC
+    {IMAGE_MODE, IMAGE_MODE_JPEG_EN | IMAGE_MODE_HREF_VSYNC},
     {0xD7, 0x03},
     {0xE1, 0x77},
     {0xE5, 0x1F},
@@ -481,65 +481,5 @@ const uint8_t agc_gain_tbl[31] = {
     0x00, 0x10, 0x18, 0x30, 0x34, 0x38, 0x3C, 0x70, 0x72, 0x74, 0x76, 0x78, 0x7A, 0x7C, 0x7E, 0xF0,
     0xF1, 0xF2, 0xF3, 0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD, 0xFE, 0xFF
 };
-
-//reg,val, mask
-const static uint8_t OV2640_SHARPNESS_AUTO[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0x20,   0x20,   
-};   
-   
-const static uint8_t OV2640_SHARPNESS_MANUAL[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0x00,   0x20,   
-};   
-   
-const static uint8_t OV2640_SHARPNESS_LEVEL0[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0xc0,   0x1f,   
-};   
-const static uint8_t OV2640_SHARPNESS_LEVEL1[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0xc1,   0x1f,   
-};   
-const static uint8_t OV2640_SHARPNESS_LEVEL2[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0xc2,   0x1f,   
-};   
-const static uint8_t OV2640_SHARPNESS_LEVEL3[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0xc4,   0x1f,   
-};   
-const static uint8_t OV2640_SHARPNESS_LEVEL4[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0xc8,   0x1f,   
-};   
-const static uint8_t OV2640_SHARPNESS_LEVEL5[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0xd0,   0x1f,   
-};   
-const static uint8_t OV2640_SHARPNESS_LEVEL6[]=   
-{   
-    0x92,   0x01,   0xff,   
-    0x93,   0xdf,   0x1f,   
-};   
-
-const static uint8_t* OV2640_SETTING_SHARPNESS[]=   
-{   
-    OV2640_SHARPNESS_LEVEL0,   
-    OV2640_SHARPNESS_LEVEL1,   
-    OV2640_SHARPNESS_LEVEL2,   
-    OV2640_SHARPNESS_LEVEL3,   
-    OV2640_SHARPNESS_LEVEL4,   
-    OV2640_SHARPNESS_LEVEL5,   
-    OV2640_SHARPNESS_LEVEL6   
-};   
 
 #endif /* _OV2640_SETTINGS_H_ */

@@ -17,8 +17,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-static uint8_t s_sharpness = 3;
-
 #if defined(ARDUINO_ARCH_ESP32) && defined(CONFIG_ARDUHAL_ESP_LOG)
 #include "esp32-hal-log.h"
 #else
@@ -114,14 +112,14 @@ static int set_pixformat(sensor_t *sensor, pixformat_t pixformat)
     int ret = 0;
     sensor->pixformat = pixformat;
     switch (pixformat) {
-    // case PIXFORMAT_RGB565:
-    // case PIXFORMAT_RGB888:
-    //     WRITE_REGS_OR_RETURN(ov2640_settings_rgb565);
-    //     break;
-    // case PIXFORMAT_YUV422:
-    // case PIXFORMAT_GRAYSCALE:
-    //     WRITE_REGS_OR_RETURN(ov2640_settings_yuv422);
-    //     break;
+    case PIXFORMAT_RGB565:
+    case PIXFORMAT_RGB888:
+        WRITE_REGS_OR_RETURN(ov2640_settings_rgb565);
+        break;
+    case PIXFORMAT_YUV422:
+    case PIXFORMAT_GRAYSCALE:
+        WRITE_REGS_OR_RETURN(ov2640_settings_yuv422);
+        break;
     case PIXFORMAT_JPEG:
         WRITE_REGS_OR_RETURN(ov2640_settings_jpeg3);
         break;
@@ -160,30 +158,40 @@ static int set_window(sensor_t *sensor, ov2640_sensor_mode_t mode, int offset_x,
         {0, 0}
     };
 
-    c.pclk_auto = 0;
-    c.pclk_div = 8;
-    c.clk_2x = 0;
-    c.clk_div = 0;
-
-    if(sensor->pixformat != PIXFORMAT_JPEG){
-        c.pclk_auto = 1;
-        c.clk_div = 7;
+    if (sensor->pixformat == PIXFORMAT_JPEG) {
+        c.clk_2x = 0;
+        c.clk_div = 0;
+        c.pclk_auto = 0;
+        c.pclk_div = 8;
+        if(mode == OV2640_MODE_UXGA) {
+            c.pclk_div = 12;
+        }
+        // if (sensor->xclk_freq_hz == 16000000) {
+        //     c.pclk_div = c.pclk_div / 2;
+        // }
     } else {
+#if CONFIG_IDF_TARGET_ESP32
+        c.clk_2x = 0;
+#else
         c.clk_2x = 1;
+#endif
+        c.clk_div = 7;
+        c.pclk_auto = 1;
+        c.pclk_div = 8;
+        if (mode == OV2640_MODE_CIF) {
+            c.clk_div = 3;
+        } else if(mode == OV2640_MODE_UXGA) {
+            c.pclk_div = 12;
+        }
     }
-    //causes cam_task stack overflow
-    //ESP_LOGI(TAG, "Set PLL: clk_2x: %u, clk_div: %u, pclk_auto: %u, pclk_div: %u", c.clk_2x, c.clk_div, c.pclk_auto, c.pclk_div);
+    ESP_LOGI(TAG, "Set PLL: clk_2x: %u, clk_div: %u, pclk_auto: %u, pclk_div: %u", c.clk_2x, c.clk_div, c.pclk_auto, c.pclk_div);
 
     if (mode == OV2640_MODE_CIF) {
         regs = ov2640_settings_to_cif;
-        if(sensor->pixformat != PIXFORMAT_JPEG){
-            c.clk_div = 3;
-        }
     } else if (mode == OV2640_MODE_SVGA) {
         regs = ov2640_settings_to_svga;
     } else {
         regs = ov2640_settings_to_uxga;
-        c.pclk_div = 12;
     }
 
     WRITE_REG_OR_RETURN(BANK_DSP, R_BYPASS, R_BYPASS_DSP_BYPAS);
@@ -445,30 +453,15 @@ static int set_wpc_dsp(sensor_t *sensor, int enable)
     return set_reg_bits(sensor, BANK_DSP, CTRL3, 6, 1, enable?1:0);
 }
 
-//-2...-1 - blur, 0 - no processing, 1...2 - sharpen, 3 - auto
-//auto is default
+//unsupported
 static int set_sharpness(sensor_t *sensor, int level)
 {
-    if ( level == 3 ) {
-        s_sharpness = level;
-        sensor->set_reg(sensor, 0xff, 0xff, 0x00); //banksel:DSP   BANK_DSP, BANK_SENSOR, BANK_MAX
-        sensor->set_reg(sensor, OV2640_SHARPNESS_AUTO[0], OV2640_SHARPNESS_AUTO[2], OV2640_SHARPNESS_AUTO[1]);
-        return sensor->set_reg(sensor, OV2640_SHARPNESS_AUTO[3+0], OV2640_SHARPNESS_AUTO[3+2], OV2640_SHARPNESS_AUTO[3+1]);
-    } else if ( level >= -3 && level <= 2 ) {
-        s_sharpness = level;
-        sensor->set_reg(sensor, 0xff, 0xff, 0x00); //banksel:DSP   BANK_DSP, BANK_SENSOR, BANK_MAX
-        sensor->set_reg(sensor, OV2640_SHARPNESS_MANUAL[0], OV2640_SHARPNESS_MANUAL[2], OV2640_SHARPNESS_MANUAL[1]);
-        sensor->set_reg(sensor, OV2640_SHARPNESS_MANUAL[3+0], OV2640_SHARPNESS_MANUAL[3+2], OV2640_SHARPNESS_MANUAL[3+1]);
-        int sharpness = level + 3;
-        sensor->set_reg(sensor, OV2640_SETTING_SHARPNESS[sharpness][0], OV2640_SETTING_SHARPNESS[sharpness][2], OV2640_SETTING_SHARPNESS[sharpness][1]);
-        return sensor->set_reg(sensor, OV2640_SETTING_SHARPNESS[sharpness][3+0], OV2640_SETTING_SHARPNESS[sharpness][3+2], OV2640_SETTING_SHARPNESS[sharpness][3+1]);
-    } 
-    return -1;
+   return -1;
 }
 
 static int set_denoise(sensor_t *sensor, int level)
 {
-    return -1;
+   return -1;
 }
 
 static int get_reg(sensor_t *sensor, int reg, int mask)
@@ -547,7 +540,7 @@ static int init_status(sensor_t *sensor){
     sensor->status.dcw = get_reg_bits(sensor, BANK_DSP, CTRL2, 5, 1);
     sensor->status.colorbar = get_reg_bits(sensor, BANK_SENSOR, COM7, 1, 1);
 
-    sensor->status.sharpness = s_sharpness;
+    sensor->status.sharpness = 0;//not supported
     sensor->status.denoise = 0;
     return 0;
 }

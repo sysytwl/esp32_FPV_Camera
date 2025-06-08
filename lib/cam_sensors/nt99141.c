@@ -182,26 +182,26 @@ static int set_pixformat(sensor_t *sensor, pixformat_t pixformat)
     const uint16_t (*regs)[2];
 
     switch (pixformat) {
-        // case PIXFORMAT_YUV422:
-        //     regs = sensor_fmt_yuv422;
-        //     break;
+        case PIXFORMAT_YUV422:
+            regs = sensor_fmt_yuv422;
+            break;
 
-        // case PIXFORMAT_GRAYSCALE:
-        //     regs = sensor_fmt_grayscale;
-        //     break;
+        case PIXFORMAT_GRAYSCALE:
+            regs = sensor_fmt_grayscale;
+            break;
 
-        // case PIXFORMAT_RGB565:
-        // case PIXFORMAT_RGB888:
-        //     regs = sensor_fmt_rgb565;
-        //     break;
+        case PIXFORMAT_RGB565:
+        case PIXFORMAT_RGB888:
+            regs = sensor_fmt_rgb565;
+            break;
 
         case PIXFORMAT_JPEG:
             regs = sensor_fmt_jpeg;
             break;
 
-        // case PIXFORMAT_RAW:
-        //     regs = sensor_fmt_raw;
-        //     break;
+        case PIXFORMAT_RAW:
+            regs = sensor_fmt_raw;
+            break;
 
         default:
             ESP_LOGE(TAG, "Unsupported pixformat: %u", pixformat);

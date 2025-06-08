@@ -50,6 +50,9 @@
         "typeinfo": "cpp",
         "esp_event.h": "c",
         "ll_cam.h": "c",
-        "cam_hal.h": "c"
+        "cam_hal.h": "c",
+        "future": "c",
+        "xclk.h": "c",
+        "esp_camera.h": "c"
     }
 }

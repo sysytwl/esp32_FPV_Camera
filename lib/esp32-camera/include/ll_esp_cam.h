@@ -75,7 +75,9 @@ public:
 
     virtual bool ll_cam_stop(cam_obj_t *cam);
     
-
+    virtual esp_err_t xclk_timer_conf(int ledc_timer, int xclk_freq_hz);
+    virtual esp_err_t camera_enable_out_clock(int ledc_timer, int xclk_freq_hz, int ledc_channel, int pin_xclk);
+    virtual void camera_disable_out_clock(void);
 
     virtual esp_err_t ll_cam_deinit(cam_obj_t *cam);
     virtual void ll_cam_vsync_intr_enable(cam_obj_t *cam, bool en);

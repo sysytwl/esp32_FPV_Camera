@@ -75,6 +75,89 @@
 class ll_esp32_cam : public ll_esp_cam {
 public:
 
+    esp_err_t xclk_timer_conf(int ledc_timer, int xclk_freq_hz) override {
+        ledc_timer_config_t timer_conf;
+        timer_conf.duty_resolution = LEDC_TIMER_1_BIT;
+        timer_conf.freq_hz = xclk_freq_hz;
+        timer_conf.speed_mode = LEDC_LOW_SPEED_MODE;
+
+    #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)   
+        timer_conf.deconfigure = false;
+    #endif
+    
+    #if ESP_IDF_VERSION_MAJOR >= 4
+        timer_conf.clk_cfg = LEDC_AUTO_CLK;
+    #endif
+        timer_conf.timer_num = (ledc_timer_t)ledc_timer;
+        esp_err_t err = ledc_timer_config(&timer_conf);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "ledc_timer_config failed for freq %d, rc=%x", xclk_freq_hz, err);
+        }
+        return err;
+    }
+
+    esp_err_t camera_enable_out_clock(int ledc_timer, int xclk_freq_hz, int ledc_channel, int pin_xclk) override {
+        esp_err_t err = xclk_timer_conf(ledc_timer, xclk_freq_hz);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "ledc_timer_config failed, rc=%x", err);
+            return err;
+        }
+
+        g_ledc_channel = (ledc_channel_t)ledc_channel;
+        ledc_channel_config_t ch_conf;
+        ch_conf.gpio_num = pin_xclk;
+        ch_conf.speed_mode = LEDC_LOW_SPEED_MODE;
+        ch_conf.channel = (ledc_channel_t)ledc_channel;
+        ch_conf.intr_type = LEDC_INTR_DISABLE;
+        ch_conf.timer_sel = (ledc_timer_t)ledc_timer;
+        ch_conf.duty = 1;
+        ch_conf.hpoint = 0;
+        err = ledc_channel_config(&ch_conf);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "ledc_channel_config failed, rc=%x", err);
+            return err;
+        }
+        return ESP_OK;
+    }
+
+    void camera_disable_out_clock() override {
+        if (g_ledc_channel != NO_CAMERA_LEDC_CHANNEL) {
+            ledc_stop(LEDC_LOW_SPEED_MODE, g_ledc_channel, 0);
+            g_ledc_channel = NO_CAMERA_LEDC_CHANNEL;
+        }
+    }
+
+    static esp_err_t cam_dma_config(const camera_config_t *config){
+        cam_obj->dma_buffer_size = config->data_pack_size;
+        cam_obj->dma_buffer_cnt = config->data_pack_num;
+
+        ll_cam_dma_sizes(cam_obj);
+        ESP_LOGI(TAG, "buffer_size: %d, buffer_cnt: %d, node_buffer_size: %d, node_cnt: %d",(int) cam_obj->dma_buffer_size, (int) cam_obj->dma_buffer_cnt, (int) cam_obj->dma_node_buffer_size, (int) cam_obj->dma_node_cnt);
+
+        cam_obj->dma_buffer = NULL;
+        cam_obj->dma = NULL;
+
+        //uint8_t dma_align = 0;
+        if (cam_obj->psram_mode) {//for s3 which the dma can access psram
+            // dma_align = ll_cam_get_dma_align(cam_obj);
+            // if (cam_obj->fb_size < cam_obj->recv_size) {
+            //     fb_size = cam_obj->recv_size;
+            // }
+        }else{
+            cam_obj->dma_buffer = (uint8_t *)heap_caps_malloc(cam_obj->dma_buffer_size * sizeof(uint8_t), MALLOC_CAP_DMA); // DMA malloc
+            if(NULL == cam_obj->dma_buffer) {
+                ESP_LOGE(TAG,"%s(%d): DMA buffer %d Byte malloc failed, the current largest free block:%d Byte", __FUNCTION__, __LINE__,
+                        (int) cam_obj->dma_buffer_size, (int) heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+                return ESP_FAIL;
+            }
+
+            cam_obj->dma = allocate_dma_descriptors(cam_obj->dma_node_cnt, cam_obj->dma_node_buffer_size, cam_obj->dma_buffer); // DMA descriptors
+            CAM_CHECK(cam_obj->dma != NULL, "dma malloc failed", ESP_FAIL);
+        }
+
+        return ESP_OK;
+    }
+
 static void IRAM_ATTR ll_cam_vsync_isr(void *arg){
     cam_obj_t *cam = (cam_obj_t *)arg;
     BaseType_t HPTaskAwoken = pdFALSE;
@@ -266,58 +349,6 @@ size_t IRAM_ATTR ll_cam_memcpy(cam_obj_t *cam, uint8_t *out, const uint8_t *in, 
 
     return r;
 }
-
-    esp_err_t xclk_timer_conf(int ledc_timer, int xclk_freq_hz){
-        ledc_timer_config_t timer_conf;
-        timer_conf.duty_resolution = LEDC_TIMER_1_BIT;
-        timer_conf.freq_hz = xclk_freq_hz;
-        timer_conf.speed_mode = LEDC_LOW_SPEED_MODE;
-
-    #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)   
-        timer_conf.deconfigure = false;
-    #endif
-    
-    #if ESP_IDF_VERSION_MAJOR >= 4
-        timer_conf.clk_cfg = LEDC_AUTO_CLK;
-    #endif
-        timer_conf.timer_num = (ledc_timer_t)ledc_timer;
-        esp_err_t err = ledc_timer_config(&timer_conf);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "ledc_timer_config failed for freq %d, rc=%x", xclk_freq_hz, err);
-        }
-        return err;
-    }
-
-    esp_err_t camera_enable_out_clock(const camera_config_t* config){
-        esp_err_t err = xclk_timer_conf(config->ledc_timer, config->xclk_freq_hz);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "ledc_timer_config failed, rc=%x", err);
-            return err;
-        }
-
-        g_ledc_channel = config->ledc_channel;
-        ledc_channel_config_t ch_conf;
-        ch_conf.gpio_num = config->pin_xclk;
-        ch_conf.speed_mode = LEDC_LOW_SPEED_MODE;
-        ch_conf.channel = config->ledc_channel;
-        ch_conf.intr_type = LEDC_INTR_DISABLE;
-        ch_conf.timer_sel = config->ledc_timer;
-        ch_conf.duty = 1;
-        ch_conf.hpoint = 0;
-        err = ledc_channel_config(&ch_conf);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "ledc_channel_config failed, rc=%x", err);
-            return err;
-        }
-        return ESP_OK;
-    }
-
-    void camera_disable_out_clock(){
-        if (g_ledc_channel != NO_CAMERA_LEDC_CHANNEL) {
-            ledc_stop(LEDC_LOW_SPEED_MODE, g_ledc_channel, 0);
-            g_ledc_channel = NO_CAMERA_LEDC_CHANNEL;
-        }
-    }
 
 private:
 

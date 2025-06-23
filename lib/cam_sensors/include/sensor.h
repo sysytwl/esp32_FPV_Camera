@@ -11,9 +11,48 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "ov2640.h"
+#include "ov7725.h"
+#include "ov3660.h"
+#include "ov5640.h"
+#include "nt99141.h"
+#include "ov7670.h"
+#include "gc2145.h"
+#include "gc032a.h"
+#include "gc0308.h"
+#include "bf3005.h"
+#include "bf20a6.h"
+#include "sc101iot.h"
+#include "sc030iot.h"
+#include "sc031gs.h"
+#include "mega_ccm.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct {
+    int (*detect)(int slv_addr, sensor_id_t *id);
+    int (*init)(sensor_t *sensor);
+} sensor_func_t;
+
+static const sensor_func_t g_sensors[] = {
+    {ov7725_detect, ov7725_init},
+    {ov7670_detect, ov7670_init},
+    {ov2640_detect, ov2640_init},
+    {ov3660_detect, ov3660_init},
+    {ov5640_detect, ov5640_init},
+    {nt99141_detect, nt99141_init},
+    {gc2145_detect, gc2145_init},
+    {gc032a_detect, gc032a_init},
+    {gc0308_detect, gc0308_init},
+    {bf3005_detect, bf3005_init},
+    {bf20a6_detect, bf20a6_init},
+    {sc101iot_detect, sc101iot_init},
+    {sc030iot_detect, sc030iot_init},
+    {sc031gs_detect, sc031gs_init},
+    {mega_ccm_detect, mega_ccm_init},
+};
 
 typedef enum {
     OV9650_PID = 0x96,
@@ -160,9 +199,9 @@ typedef struct {
 } ratio_settings_t;
 
 typedef struct {
-        const uint16_t width;
-        const uint16_t height;
-        const aspect_ratio_t aspect_ratio;
+    const uint16_t width;
+    const uint16_t height;
+    const aspect_ratio_t aspect_ratio;
 } resolution_info_t;
 
 // Resolution table (in sensor.c)

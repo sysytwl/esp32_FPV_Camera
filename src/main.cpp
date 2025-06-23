@@ -1,7 +1,6 @@
 // IRAM (Instruction RAM): 0x40080000 - 0x400A0000
 // DRAM (Data RAM): 0x3FFAE000 - 0x3FFFFFFF
 
-
 // #include "esp_event.h"
 // 
 // #include <driver/adc.h>

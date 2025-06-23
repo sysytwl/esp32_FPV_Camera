@@ -35,15 +35,13 @@ public:
 
     /**
      * @brief Starts the low-level camera interface with the specified DMA buffer size.
-     *
      * This virtual function initializes and starts the camera hardware, allocating
      * the necessary DMA buffers for image capture. It should be implemented by derived
      * classes to handle hardware-specific startup procedures.
-     *
-     * @param dma_buffer_size The size (in bytes) of the DMA buffer to be used for image data transfer.
-     * @return true if the camera was successfully started; false otherwise.
      */
-    virtual bool ll_cam_start(uint32_t dma_buffer_size);
+    virtual void ll_cam_start();
+
+    virtual void ll_cam_stop();
 
     /**
      * @brief Configures the camera data and synchronization pins.
@@ -73,7 +71,6 @@ public:
      */
     virtual void ll_cam_config();
 
-    virtual bool ll_cam_stop(cam_obj_t *cam);
     
     virtual esp_err_t xclk_timer_conf(int ledc_timer, int xclk_freq_hz);
     virtual esp_err_t camera_enable_out_clock(int ledc_timer, int xclk_freq_hz, int ledc_channel, int pin_xclk);

@@ -124,8 +124,6 @@ public:
         }
     }
 
-
-
     void ll_cam_config() override {
         // Enable and configure I2S peripheral
         periph_module_enable(PERIPH_I2S0_MODULE);
@@ -166,7 +164,7 @@ public:
         I2S0.timing.rx_dsync_sw = 1;
     }
 
-    esp_err_t ll_cam_set_sample_mode(pixformat_t pix_format, uint32_t xclk_freq_hz, uint16_t sensor_pid){
+    esp_err_t ll_cam_set_sample_mode(pixformat_t pix_format, uint32_t xclk_freq_hz, uint16_t sensor_pid, uint8_t* in_bytes_per_pixel) {
         if (pix_format == PIXFORMAT_GRAYSCALE) {
             if (sensor_pid == OV3660_PID || sensor_pid == OV5640_PID || sensor_pid == NT99141_PID || sensor_pid == SC031GS_PID || sensor_pid == BF20A6_PID || sensor_pid == GC0308_PID) {
                 if (xclk_freq_hz > 10000000) {
@@ -176,7 +174,7 @@ public:
                     _sampling_mode = SM_0A0B_0C0D;
                     _dma_filter = ll_cam_dma_filter_yuyv;
                 }
-                cam->in_bytes_per_pixel = 1;       // camera sends Y8
+                *in_bytes_per_pixel = 1;       // camera sends Y8
             } else {
                 if (xclk_freq_hz > 10000000 && sensor_pid != OV7725_PID) {
                     _sampling_mode = SM_0A00_0B00;
@@ -185,9 +183,8 @@ public:
                     _sampling_mode = SM_0A0B_0C0D;
                     _dma_filter = ll_cam_dma_filter_grayscale;
                 }
-                cam->in_bytes_per_pixel = 2;       // camera sends YU/YV
+                *in_bytes_per_pixel = 2;       // camera sends YU/YV
             }
-            cam->fb_bytes_per_pixel = 1;       // frame buffer stores Y8
         } else if (pix_format == PIXFORMAT_YUV422 || pix_format == PIXFORMAT_RGB565) {
                 if (xclk_freq_hz > 10000000 && sensor_pid != OV7725_PID) {
                     if (sensor_pid == OV7670_PID) {
@@ -200,11 +197,9 @@ public:
                     _sampling_mode = SM_0A0B_0C0D;
                     _dma_filter = ll_cam_dma_filter_yuyv;
                 }
-                cam->in_bytes_per_pixel = 2;       // camera sends YU/YV
-                cam->fb_bytes_per_pixel = 2;       // frame buffer stores YU/YV/RGB565
+                *in_bytes_per_pixel = 2;       // camera sends YU/YV    // frame buffer stores YU/YV/RGB565
         } else if (pix_format == PIXFORMAT_JPEG) {
-            cam->in_bytes_per_pixel = 1;
-            cam->fb_bytes_per_pixel = 1;
+            *in_bytes_per_pixel = 1;
             _dma_filter = ll_cam_dma_filter_jpeg;
             _sampling_mode = SM_0A00_0B00;
         } else {
@@ -216,9 +211,13 @@ public:
     }
 
     esp_err_t cam_dma_config(uint32_t dma_node_buffer_size, uint32_t dma_node_cnt){
-        dma_node_buffer_size *= ll_cam_bytes_per_sample(_sampling_mode);
-        CAM_CHECK(dma_node_buffer_size >= LCD_CAM_DMA_NODE_BUFFER_MAX_SIZE, "dma_node_buffer_size is too large", ESP_ERR_INVALID_SIZE);
         _eof_isr_size = dma_node_buffer_size;
+
+        dma_node_buffer_size /= ll_cam_bytes_per_sample(_sampling_mode);
+        CAM_CHECK(dma_node_buffer_size >= LCD_CAM_DMA_NODE_BUFFER_MAX_SIZE, "dma_node_buffer_size is too large", ESP_ERR_INVALID_SIZE);
+        
+        _fifo_depth = dma_node_cnt;
+        dma_node_cnt *= ll_cam_bytes_per_sample(_sampling_mode);
 
         uint32_t dma_buffer_size = dma_node_buffer_size * dma_node_cnt;
         CAM_CHECK(dma_buffer_size >= CONFIG_CAMERA_DMA_BUFFER_SIZE_MAX, "dma_buffer_size is too large", ESP_ERR_INVALID_SIZE);
@@ -235,51 +234,34 @@ public:
     }
 
     static void IRAM_ATTR ll_cam_vsync_isr(void *arg){
-        cam_obj_t *cam = (cam_obj_t *)arg;
-        BaseType_t HPTaskAwoken = pdFALSE;
-        // filter
         ets_delay_us(1);
-        if (gpio_ll_get_level(&GPIO, cam->vsync_pin) == !cam->vsync_invert) {
+        if (gpio_ll_get_level(&GPIO, _vsync_pin) == !cam->vsync_invert) {
             ll_cam_send_event(cam, CAM_VSYNC_EVENT, &HPTaskAwoken);
-            if (HPTaskAwoken == pdTRUE) {
-                portYIELD_FROM_ISR();
-            }
         }
     }
 
     static void IRAM_ATTR ll_cam_dma_isr(void *arg){
-        cam_obj_t *cam = (cam_obj_t *)arg;
-        BaseType_t HPTaskAwoken = pdFALSE;
-
-        typeof(I2S0.int_st) status = I2S0.int_st;
-        if (status.val == 0) {
+        if (I2S0.int_st.val == 0) {
             return;
         }
-
-        I2S0.int_clr.val = status.val;
-
-        if (status.in_suc_eof) {
+        I2S0.int_clr.val = I2S0.int_st.val;
+        if (I2S0.int_st.in_suc_eof){
             ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
         }
-        if (HPTaskAwoken == pdTRUE) {
-            portYIELD_FROM_ISR();
+    }
+
+    esp_err_t ll_cam_deinit(){
+        gpio_isr_handler_remove(_vsync_pin);
+
+        if (_cam_intr_handle) {
+            esp_intr_free(this->_cam_intr_handle);
+            _cam_intr_handle = NULL;
         }
+        gpio_uninstall_isr_service();
+        return ESP_OK;
     }
 
-
-
-esp_err_t ll_cam_deinit(cam_obj_t *cam){
-    gpio_isr_handler_remove(cam->vsync_pin);
-
-    if (cam->cam_intr_handle) {
-        esp_intr_free(cam->cam_intr_handle);
-        cam->cam_intr_handle = NULL;
-    }
-    gpio_uninstall_isr_service();
-    return ESP_OK;
-}
-
-    void ll_cam_start() override {
+    void ll_cam_start() override {//dma start
         I2S0.conf.rx_start = 0;
 
         I2S_ISR_ENABLE(in_suc_eof);
@@ -302,24 +284,15 @@ esp_err_t ll_cam_deinit(cam_obj_t *cam){
         I2S0.conf.rx_start = 1;
     }
 
-bool ll_cam_stop(cam_obj_t *cam){
-    I2S0.conf.rx_start = 0;
-    I2S_ISR_DISABLE(in_suc_eof);
-    I2S0.in_link.stop = 1;
-    return true;
-}
-
-    void ll_cam_vsync_intr_enable(gpio_num_t vsync_pin, bool en){
-        if (en) {
-            gpio_intr_enable(vsync_pin);
-        } else {
-            gpio_intr_disable(vsync_pin);
-        }
+    void ll_cam_stop() override {//dma stop
+        I2S0.conf.rx_start = 0;
+        I2S_ISR_DISABLE(in_suc_eof);
+        I2S0.in_link.stop = 1;
     }
 
-    esp_err_t ll_cam_set_pin(uint8_t vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7) override {
+    esp_err_t ll_cam_set_pin(bool vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7) override {
         gpio_config_t io_conf = {0};
-        io_conf.intr_type = vsync_invert ? GPIO_PIN_INTR_NEGEDGE : GPIO_PIN_INTR_POSEDGE;
+        io_conf.intr_type = vsync_invert ? GPIO_INTR_NEGEDGE : GPIO_INTR_POSEDGE;
         io_conf.pin_bit_mask = 1ULL << pin_vsync;
         io_conf.mode = GPIO_MODE_INPUT;
         io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
@@ -360,10 +333,18 @@ bool ll_cam_stop(cam_obj_t *cam){
     }
 
     esp_err_t ll_cam_init_isr(){//init the dma interrupt
-        return esp_intr_alloc(ETS_I2S0_INTR_SOURCE, ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM, ll_cam_dma_isr, this->_dma_buffer, &cam->cam_intr_handle);
+        return esp_intr_alloc(ETS_I2S0_INTR_SOURCE, ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM, ll_esp32_cam::ll_cam_dma_isr, this->_dma_buffer, &this->_cam_intr_handle);
     }
 
-    size_t IRAM_ATTR ll_cam_memcpy(uint8_t *out, const uint8_t *in, size_t len){
+    void ll_cam_vsync_intr_enable(gpio_num_t vsync_pin, bool en){
+        if (en) {
+            gpio_intr_enable(vsync_pin);
+        } else {
+            gpio_intr_disable(vsync_pin);
+        }
+    }
+
+    inline size_t IRAM_ATTR ll_cam_memcpy(uint8_t *out, const uint8_t *in, size_t len){
         return _dma_filter(out, in, len);
     }
 
@@ -397,8 +378,12 @@ private:
     static i2s_sampling_mode_t _sampling_mode;
 
     lldesc_t *_dma = NULL; //DMA descriptors
-    uint8_t  *_dma_buffer = NULL; //DMA buffer
+    uint8_t *_dma_buffer = NULL; //DMA buffer
     uint32_t _eof_isr_size = NULL; // size of the data to be transferred before EOF interrupt is triggered
+    intr_handle_t _cam_intr_handle = NULL; // dma interrupt handle, use to free the interrupt
+
+    size_t _fifo_cnt = 0; // FIFO output pointer, used to track the current position in the FIFO buffer
+    size_t _fifo_depth = 0; // FIFO depth, used to track the number of elements in the FIFO buffer
 
     static size_t ll_cam_bytes_per_sample(i2s_sampling_mode_t mode){
         switch(mode) {
@@ -533,7 +518,6 @@ private:
 
     typedef size_t (*dma_filter_t)(uint8_t* dst, const uint8_t* src, size_t len);
     dma_filter_t _dma_filter = ll_cam_dma_filter_jpeg;
-
 };
 
 #endif

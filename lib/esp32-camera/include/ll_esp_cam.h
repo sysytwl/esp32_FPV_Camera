@@ -34,13 +34,9 @@ public:
 
 
     /**
-     * @brief Starts the low-level camera interface with the specified DMA buffer size.
-     * This virtual function initializes and starts the camera hardware, allocating
-     * the necessary DMA buffers for image capture. It should be implemented by derived
-     * classes to handle hardware-specific startup procedures.
+     * @brief Starts DMA buffer and DMA buffer EOF intr
      */
     virtual void ll_cam_start();
-
     virtual void ll_cam_stop();
 
     /**
@@ -64,14 +60,16 @@ public:
      *     - ESP_OK on success
      *     - Appropriate error code otherwise
      */
-    virtual esp_err_t ll_cam_set_pin(uint8_t vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7);
+    virtual esp_err_t ll_cam_set_pin(bool vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7);
 
     /**
-     * @brief Configures the I2S0.
+     * @brief Configures the I2S0 on esp32 / Configure cam interface on esp32s3
      */
     virtual void ll_cam_config();
 
-    
+    /**
+     * @brief Configures the XCLK by using pwm.
+     */
     virtual esp_err_t xclk_timer_conf(int ledc_timer, int xclk_freq_hz);
     virtual esp_err_t camera_enable_out_clock(int ledc_timer, int xclk_freq_hz, int ledc_channel, int pin_xclk);
     virtual void camera_disable_out_clock(void);

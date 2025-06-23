@@ -55,6 +55,15 @@
         "xclk.h": "c",
         "esp_camera.h": "c",
         "esp32-hal-log.h": "c",
-        "ov2640.h": "c"
+        "ov2640.h": "c",
+        "chrono": "cpp",
+        "codecvt": "cpp",
+        "condition_variable": "cpp",
+        "csignal": "cpp",
+        "list": "cpp",
+        "ratio": "cpp",
+        "set": "cpp",
+        "mutex": "cpp",
+        "thread": "cpp"
     }
 }

@@ -11,6 +11,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+/* Modified by JackShenYt*/
+
 #pragma once
 
 #include <stdio.h>
@@ -30,7 +32,7 @@
     #include "driver/gpio.h"
     #include "driver/ledc.h"
     #include "esp_system.h"
-    #define NO_CAMERA_LEDC_CHANNEL 0xFF
+
 
     #if (ESP_IDF_VERSION_MAJOR >= 4) && (ESP_IDF_VERSION_MINOR > 1)
         #include "hal/gpio_ll.h"
@@ -71,59 +73,7 @@
 
 class ll_esp32_cam : public ll_esp_cam {
 public:
-
-    esp_err_t xclk_timer_conf(int ledc_timer, int xclk_freq_hz) override {
-        ledc_timer_config_t timer_conf;
-        timer_conf.duty_resolution = LEDC_TIMER_1_BIT;
-        timer_conf.freq_hz = xclk_freq_hz;
-        timer_conf.speed_mode = LEDC_LOW_SPEED_MODE;
-
-    #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 2, 0)   
-        timer_conf.deconfigure = false;
-    #endif
-    
-    #if ESP_IDF_VERSION_MAJOR >= 4
-        timer_conf.clk_cfg = LEDC_AUTO_CLK;
-    #endif
-        timer_conf.timer_num = (ledc_timer_t)ledc_timer;
-        esp_err_t err = ledc_timer_config(&timer_conf);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "ledc_timer_config failed for freq %d, rc=%x", xclk_freq_hz, err);
-        }
-        return err;
-    }
-
-    esp_err_t camera_enable_out_clock(int ledc_timer, int xclk_freq_hz, int ledc_channel, int pin_xclk) override {
-        esp_err_t err = xclk_timer_conf(ledc_timer, xclk_freq_hz);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "ledc_timer_config failed, rc=%x", err);
-            return err;
-        }
-
-        g_ledc_channel = (ledc_channel_t)ledc_channel;
-        ledc_channel_config_t ch_conf;
-        ch_conf.gpio_num = pin_xclk;
-        ch_conf.speed_mode = LEDC_LOW_SPEED_MODE;
-        ch_conf.channel = (ledc_channel_t)ledc_channel;
-        ch_conf.intr_type = LEDC_INTR_DISABLE;
-        ch_conf.timer_sel = (ledc_timer_t)ledc_timer;
-        ch_conf.duty = 1;
-        ch_conf.hpoint = 0;
-        err = ledc_channel_config(&ch_conf);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "ledc_channel_config failed, rc=%x", err);
-            return err;
-        }
-        return ESP_OK;
-    }
-
-    void camera_disable_out_clock() override {
-        if (g_ledc_channel != NO_CAMERA_LEDC_CHANNEL) {
-            ledc_stop(LEDC_LOW_SPEED_MODE, g_ledc_channel, 0);
-            g_ledc_channel = (ledc_channel_t)NO_CAMERA_LEDC_CHANNEL;
-        }
-    }
-
+    /*    config functions, init/deinit    */
     void ll_cam_config() override {
         // Enable and configure I2S peripheral
         periph_module_enable(PERIPH_I2S0_MODULE);
@@ -162,6 +112,51 @@ public:
         I2S0.sample_rate_conf.rx_bits_mod = 0;
         I2S0.timing.val = 0;
         I2S0.timing.rx_dsync_sw = 1;
+    }
+
+    esp_err_t ll_cam_set_pin(bool vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7) override {
+        gpio_config_t io_conf = {0};
+        io_conf.intr_type = vsync_invert ? GPIO_INTR_NEGEDGE : GPIO_INTR_POSEDGE;
+        io_conf.pin_bit_mask = 1ULL << pin_vsync;
+        io_conf.mode = GPIO_MODE_INPUT;
+        io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
+        io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
+        gpio_config(&io_conf);
+
+        _vsync_pin = (gpio_num_t)pin_vsync;
+        _vsync_invert = vsync_invert;
+
+        gpio_install_isr_service(ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM);
+        gpio_isr_handler_add((gpio_num_t)pin_vsync, ll_cam_vsync_isr, this); // vsync isr
+        gpio_intr_disable((gpio_num_t)pin_vsync);
+
+        PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_pclk], PIN_FUNC_GPIO);
+        gpio_set_direction((gpio_num_t)pin_pclk, GPIO_MODE_INPUT);
+        gpio_set_pull_mode((gpio_num_t)pin_pclk, GPIO_FLOATING);
+        gpio_matrix_in(pin_pclk, I2S0I_WS_IN_IDX, false);
+
+        PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_vsync], PIN_FUNC_GPIO);
+        gpio_set_direction((gpio_num_t)pin_vsync, GPIO_MODE_INPUT);
+        gpio_set_pull_mode((gpio_num_t)pin_vsync, GPIO_FLOATING);
+        gpio_matrix_in(pin_vsync, I2S0I_V_SYNC_IDX, false);
+
+        //PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_href], PIN_FUNC_GPIO);
+        //gpio_set_direction((gpio_num_t)pin_href, GPIO_MODE_INPUT);
+        //gpio_set_pull_mode((gpio_num_t)pin_href, GPIO_FLOATING);
+        //gpio_matrix_in(pin_href, I2S0I_H_SYNC_IDX, false);
+        gpio_matrix_in(0x38, I2S0I_H_ENABLE_IDX, false); // transmission_start = (I2Sn_H_SYNC == 1)&&(I2Sn_V_SYNC == 1)&&(I2Sn_H_ENABLE == 1)
+
+        int data_pins[8] = {
+            pin_d0, pin_d1, pin_d2, pin_d3, pin_d4, pin_d5, pin_d6, pin_d7,
+        };
+        for (int i = 0; i < 8; i++) {
+            PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[data_pins[i]], PIN_FUNC_GPIO);
+            gpio_set_direction((gpio_num_t)data_pins[i], GPIO_MODE_INPUT);
+            gpio_set_pull_mode((gpio_num_t)data_pins[i], GPIO_FLOATING);
+            gpio_matrix_in(data_pins[i], I2S0I_DATA_IN0_IDX + i, false);
+        }
+
+        return ESP_OK;
     }
 
     esp_err_t ll_cam_set_sample_mode(pixformat_t pix_format, uint32_t xclk_freq_hz, uint16_t sensor_pid, uint8_t* in_bytes_per_pixel) {
@@ -211,9 +206,7 @@ public:
     }
 
     esp_err_t cam_dma_config(uint32_t dma_node_buffer_size, uint32_t dma_node_cnt){
-        _eof_isr_size = dma_node_buffer_size;
-
-        dma_node_buffer_size /= ll_cam_bytes_per_sample(_sampling_mode);
+        _eof_isr_size = dma_node_buffer_size * ll_cam_bytes_per_sample(_sampling_mode);
         CAM_CHECK(dma_node_buffer_size >= LCD_CAM_DMA_NODE_BUFFER_MAX_SIZE, "dma_node_buffer_size is too large", ESP_ERR_INVALID_SIZE);
         
         _fifo_depth = dma_node_cnt;
@@ -233,21 +226,8 @@ public:
         return ESP_OK;
     }
 
-    static void IRAM_ATTR ll_cam_vsync_isr(void *arg){
-        ets_delay_us(1);
-        if (gpio_ll_get_level(&GPIO, _vsync_pin) == !cam->vsync_invert) {
-            ll_cam_send_event(cam, CAM_VSYNC_EVENT, &HPTaskAwoken);
-        }
-    }
-
-    static void IRAM_ATTR ll_cam_dma_isr(void *arg){
-        if (I2S0.int_st.val == 0) {
-            return;
-        }
-        I2S0.int_clr.val = I2S0.int_st.val;
-        if (I2S0.int_st.in_suc_eof){
-            ll_cam_send_event(cam, CAM_IN_SUC_EOF_EVENT, &HPTaskAwoken);
-        }
+    esp_err_t ll_cam_init_isr(){//init the dma interrupt
+        return esp_intr_alloc(ETS_I2S0_INTR_SOURCE, ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM, ll_esp32_cam::ll_cam_dma_isr, this, &this->_cam_intr_handle);
     }
 
     esp_err_t ll_cam_deinit(){
@@ -261,6 +241,7 @@ public:
         return ESP_OK;
     }
 
+    /*   start/stop the camera    */
     void ll_cam_start() override {//dma start
         I2S0.conf.rx_start = 0;
 
@@ -290,66 +271,67 @@ public:
         I2S0.in_link.stop = 1;
     }
 
-    esp_err_t ll_cam_set_pin(bool vsync_invert, int pin_vsync, int pin_pclk, int pin_d0, int pin_d1, int pin_d2, int pin_d3, int pin_d4, int pin_d5, int pin_d6, int pin_d7) override {
-        gpio_config_t io_conf = {0};
-        io_conf.intr_type = vsync_invert ? GPIO_INTR_NEGEDGE : GPIO_INTR_POSEDGE;
-        io_conf.pin_bit_mask = 1ULL << pin_vsync;
-        io_conf.mode = GPIO_MODE_INPUT;
-        io_conf.pull_up_en = GPIO_PULLUP_ENABLE;
-        io_conf.pull_down_en = GPIO_PULLDOWN_DISABLE;
-        gpio_config(&io_conf);
-
-        gpio_install_isr_service(ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM);
-        gpio_isr_handler_add((gpio_num_t)pin_vsync, ll_cam_vsync_isr, this->_dma_buffer); // vsync isr
-        gpio_intr_disable((gpio_num_t)pin_vsync);
-
-        PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_pclk], PIN_FUNC_GPIO);
-        gpio_set_direction((gpio_num_t)pin_pclk, GPIO_MODE_INPUT);
-        gpio_set_pull_mode((gpio_num_t)pin_pclk, GPIO_FLOATING);
-        gpio_matrix_in(pin_pclk, I2S0I_WS_IN_IDX, false);
-
-        PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_vsync], PIN_FUNC_GPIO);
-        gpio_set_direction((gpio_num_t)pin_vsync, GPIO_MODE_INPUT);
-        gpio_set_pull_mode((gpio_num_t)pin_vsync, GPIO_FLOATING);
-        gpio_matrix_in(pin_vsync, I2S0I_V_SYNC_IDX, false);
-
-        //PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[pin_href], PIN_FUNC_GPIO);
-        //gpio_set_direction((gpio_num_t)pin_href, GPIO_MODE_INPUT);
-        //gpio_set_pull_mode((gpio_num_t)pin_href, GPIO_FLOATING);
-        //gpio_matrix_in(pin_href, I2S0I_H_SYNC_IDX, false);
-        gpio_matrix_in(0x38, I2S0I_H_ENABLE_IDX, false); // transmission_start = (I2Sn_H_SYNC == 1)&&(I2Sn_V_SYNC == 1)&&(I2Sn_H_ENABLE == 1)
-
-        int data_pins[8] = {
-            pin_d0, pin_d1, pin_d2, pin_d3, pin_d4, pin_d5, pin_d6, pin_d7,
-        };
-        for (int i = 0; i < 8; i++) {
-            PIN_FUNC_SELECT(GPIO_PIN_MUX_REG[data_pins[i]], PIN_FUNC_GPIO);
-            gpio_set_direction((gpio_num_t)data_pins[i], GPIO_MODE_INPUT);
-            gpio_set_pull_mode((gpio_num_t)data_pins[i], GPIO_FLOATING);
-            gpio_matrix_in(data_pins[i], I2S0I_DATA_IN0_IDX + i, false);
-        }
-
-        return ESP_OK;
-    }
-
-    esp_err_t ll_cam_init_isr(){//init the dma interrupt
-        return esp_intr_alloc(ETS_I2S0_INTR_SOURCE, ESP_INTR_FLAG_LOWMED | ESP_INTR_FLAG_IRAM, ll_esp32_cam::ll_cam_dma_isr, this->_dma_buffer, &this->_cam_intr_handle);
-    }
-
-    void ll_cam_vsync_intr_enable(gpio_num_t vsync_pin, bool en){
+    void ll_cam_vsync_intr_enable(bool en){
         if (en) {
-            gpio_intr_enable(vsync_pin);
+            gpio_intr_enable(_vsync_pin);
         } else {
-            gpio_intr_disable(vsync_pin);
+            gpio_intr_disable(_vsync_pin);
         }
     }
 
-    inline size_t IRAM_ATTR ll_cam_memcpy(uint8_t *out, const uint8_t *in, size_t len){
-        return _dma_filter(out, in, len);
+    /*   interrupts  */
+    static void IRAM_ATTR ll_cam_vsync_isr(void *arg){
+        ets_delay_us(1);
+        ll_esp32_cam* self = static_cast<ll_esp32_cam*>(arg);
+        if (gpio_ll_get_level(&GPIO, self->_vsync_pin) == !self->_vsync_invert) {
+            self->ll_cam_start();
+            gpio_intr_disable(self->_vsync_pin); // disable vsync interrupt
+        }
+    }
+
+    static void IRAM_ATTR ll_cam_dma_isr(void *arg){
+        if (I2S0.int_st.val == 0) {
+            return;
+        }
+        I2S0.int_clr.val = I2S0.int_st.val;
+        if (I2S0.int_st.in_suc_eof){
+            ll_esp32_cam* self = static_cast<ll_esp32_cam*>(arg);
+            self->_fifo_cnt++;
+            if (self->_fifo_cnt >= self->_fifo_depth) {// FIFO overflow, reset the DMA, wait for the next vsync
+                self->_fifo_cnt = 0; // reset the FIFO count
+                self->_fifo_out_ptr = 0; // reset the FIFO output pointer
+                self->ll_cam_stop(); // stop the dma
+                gpio_intr_enable(self->_vsync_pin); // enable vsync interrupt
+                ESP_LOGE(TAG, "FIFO overflow, DMA reset, vsync interrupt enabled");
+            }
+        }
+    }
+
+    /* Get Data from FIFO(DMA), 1 FIFO data width*/
+    size_t IRAM_ATTR ll_cam_get_fifo_data(uint8_t *out){
+        // if (out == NULL) {
+        //     ESP_LOGE(TAG, "Output buffer is NULL");
+        //     return 0;
+        // }
+
+        if (_fifo_cnt == 0) {
+            ESP_LOGI(TAG, "FIFO is empty");
+            return 0;
+        }
+
+        size_t tmp = _dma_filter(out, _dma_buffer + (_fifo_out_ptr * _eof_isr_size), _eof_isr_size);
+        _fifo_cnt--;
+        _fifo_out_ptr++;
+        if (_fifo_out_ptr >= _fifo_depth) {
+            _fifo_out_ptr = 0; // reset the FIFO output pointer
+        }
+
+        return tmp;
     }
 
 private:
-    ledc_channel_t g_ledc_channel = (ledc_channel_t)NO_CAMERA_LEDC_CHANNEL;
+    gpio_num_t _vsync_pin;
+    bool _vsync_invert;
 
     typedef union {
         struct {
@@ -383,6 +365,7 @@ private:
     intr_handle_t _cam_intr_handle = NULL; // dma interrupt handle, use to free the interrupt
 
     size_t _fifo_cnt = 0; // FIFO output pointer, used to track the current position in the FIFO buffer
+    size_t _fifo_out_ptr = 0; // FIFO output pointer, used to track the current position in the FIFO buffer
     size_t _fifo_depth = 0; // FIFO depth, used to track the number of elements in the FIFO buffer
 
     static size_t ll_cam_bytes_per_sample(i2s_sampling_mode_t mode){

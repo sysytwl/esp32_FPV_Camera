@@ -48,7 +48,7 @@ static const char *TAG = "cam";
     #error "This chip does not support."
 #endif
 
-class esp_cam {
+class ESP_Cam {
 public:
 
     /**
@@ -73,8 +73,12 @@ public:
         int pin_pwdn;          // GPIO number for power down pin
         int pin_reset;         // GPIO number for reset pin
         int pin_xclk;          // GPIO number for XCLK pin
+
         int pin_sccb_sda;      // GPIO number for SCCB data pin
         int pin_sccb_scl;      // GPIO number for SCCB clock pin
+        int sccb_i2c_port;     /*!< If pin_sccb_sda is -1, use the already configured I2C bus by number */
+
+
         int pin_d0;            // GPIO number for D0 data pin
         int pin_d1;            // GPIO number for D1 data pin
         int pin_d2;            // GPIO number for D2 data pin
@@ -97,7 +101,7 @@ public:
         uint8_t jpeg_quality;
 
         size_t data_pack_size; // size of each data pack in bytes, fifo width, must be a multiple of 4
-        size_t data_pack_num;  // number of data packs to be used in DMA, fifo depth
+        size_t data_pack_num=3;  // number of data packs to be used in DMA, fifo depth
     };
 
     /**
@@ -147,6 +151,9 @@ public:
             ESP_LOGE(TAG, "Failed to set frame size");
             return ESP_ERR_INVALID_ARG;
         }
+        _width = resolution[config->frame_size].width;
+        _height = resolution[config->frame_size].height;
+        _current_line = 0;
 
         // set the pixel format
         if (PIXFORMAT_JPEG == config->pix_format && (!camera_sensor[camera_model].support_jpeg)) {
@@ -154,8 +161,9 @@ public:
             return ESP_ERR_NOT_SUPPORTED;
         }
         s_state->sensor.set_pixformat(&s_state->sensor, config->pix_format);
-        if (config->pix_format == PIXFORMAT_JPEG) {
+        if (config->pix_format == PIXFORMAT_JPEG){
             s_state->sensor.set_quality(&s_state->sensor, config->jpeg_quality);
+            _jpeg = true;
         }
         if (s_state->sensor.id.PID == OV2640_PID) {
             s_state->sensor.set_gainceiling(&s_state->sensor, GAINCEILING_2X);
@@ -166,17 +174,18 @@ public:
         s_state->sensor.init_status(&s_state->sensor);
 
         // (i2s)dma set
-        uint8_t in_bytes_per_pixel = 0;
-        ll_cam.ll_cam_set_sample_mode(config->pix_format, config->xclk_freq_hz, camera_sensor[camera_model].pid, &in_bytes_per_pixel);
+        uint8_t bytes_per_pixel = 0;
+        ll_cam.ll_cam_set_sample_mode(config->pix_format, config->xclk_freq_hz, camera_sensor[camera_model].pid, &bytes_per_pixel);
         if (config->pix_format != PIXFORMAT_JPEG){
-            config->data_pack_size = resolution[config->frame_size].width * in_bytes_per_pixel;
+            config->data_pack_size = resolution[config->frame_size].width * bytes_per_pixel;
         }
         esp_err_t ret = ll_cam.cam_dma_config(config->data_pack_size, config->data_pack_num); //psram CONFIG_IDF_TARGET_ESP32S3
         CAM_CHECK(ret != ESP_OK, "cam_dma_config failed", ret);
+        _width *= bytes_per_pixel; // update width to include bytes per pixel
 
         // isr set
         ll_cam.ll_cam_init_isr();//dma interrupt init
-        ll_cam.ll_cam_vsync_intr_enable(cam_obj, true);//vsync interrupt enable
+        ll_cam.ll_cam_vsync_intr_enable(true);//vsync interrupt enable
 
         return ESP_OK;
     }
@@ -184,13 +193,34 @@ public:
     /**
      * @brief Deinitialize the camera driver
      */
-    static esp_err_t deinit();
+    static esp_err_t deinit(){};
 
 
     /**
      * @brief ESP CAM TICK (DMA DATA PROCESSING)
      */
-    static bool tick(uint8_t *data, bool *last);
+    static size_t tick(uint8_t* data, bool* last) {
+        if (data == NULL || last == NULL) {
+            ESP_LOGE(TAG, "Invalid arguments to tick");
+            return 0;
+        }
+
+        size_t tmp = ll_cam.ll_cam_get_fifo_data(data); // Get data from FIFO
+        if (tmp > 0 && !_jpeg) {
+            if(tmp != _width){
+                ESP_LOGW(TAG, "Data length %zu does not match expected width %d", tmp, _width);
+            }
+
+            _current_line++;
+            if (_current_line >= _height) {
+                _current_line = 0; // reset the current line counter
+                *last = true; // indicate that the last line has been processed
+            } else {
+                *last = false; // not the last line yet
+            }
+        }
+        return tmp;
+    };
 
     /**
      * @brief CAM JPEG IMG Quality auto change
@@ -215,6 +245,11 @@ public:
     }
 
 private:
+    static bool _jpeg;
+    static size_t _width; // current image width and height
+    static uint16_t _height; // current image width and height
+    static uint16_t _current_line;
+
     float _s_quality_framesize_K1=0, _s_quality_framesize_K2=1, _s_quality_framesize_K3=1;
     int Qcurrent = 63; // current quality value, default is 63 (lowest quality)
 

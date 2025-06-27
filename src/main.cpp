@@ -38,7 +38,7 @@
 #include "main.h"
 #include "esp_heap_caps.h"
 #include "config.h"
-#include "esp_camera.h"
+#include "esp_cam.h"
 #include "fec_buffer.h"
 #include "fec.h"
 
@@ -88,6 +88,7 @@
 
 ZFE_FEC fec;
 FEC_Block_buffer fec_buf;
+ESP_Cam esp_cam;
 
 
 #define coding_k 6
@@ -113,7 +114,7 @@ void setup(){
     fec_buf.init(1500, coding_k, 20, coding_n);
 
     // setup camera
-    camera_config_t config;
+    ESP_Cam::camera_config_t config;
         config.ledc_channel = LEDC_CHANNEL_0;
         config.ledc_timer = LEDC_TIMER_0;
         config.pin_d0 = Y2_GPIO_NUM;
@@ -135,7 +136,9 @@ void setup(){
         config.xclk_freq_hz = CAM_XCLK;  
         config.frame_size = FRAMESIZE_CIF;
         config.jpeg_quality = 63;  //start from lowest quality to decrease pressure at startup
-    ESP_ERROR_CHECK(esp_camera_init(&config));
+        config.data_pack_num = coding_k*2; // 2x coding_k for FEC
+        config.data_pack_size = 1400;
+    ESP_ERROR_CHECK(esp_cam.init(&config));
 
 
     //FEC init
@@ -147,7 +150,7 @@ void setup(){
 size_t count = 1500;
 void loop(){
     static bool last = false;
-    if(esp_cam_tick(fec_buf.get_block_pointer(), &last)){//check for DMA/VSYNC IRS, add to the fec buffer
+    if(esp_cam.tick(fec_buf.get_block_pointer(), &last)){//check for DMA/VSYNC IRS, add to the fec buffer
         //send the pack
         //wifi injection
         if(fec_buf.fec_buf_ready()){

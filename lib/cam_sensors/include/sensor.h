@@ -186,16 +186,16 @@ typedef enum {
 } gainceiling_t;
 
 typedef struct {
-        uint16_t max_width;
-        uint16_t max_height;
-        uint16_t start_x;
-        uint16_t start_y;
-        uint16_t end_x;
-        uint16_t end_y;
-        uint16_t offset_x;
-        uint16_t offset_y;
-        uint16_t total_x;
-        uint16_t total_y;
+    uint16_t max_width;
+    uint16_t max_height;
+    uint16_t start_x;
+    uint16_t start_y;
+    uint16_t end_x;
+    uint16_t end_y;
+    uint16_t offset_x;
+    uint16_t offset_y;
+    uint16_t total_x;
+    uint16_t total_y;
 } ratio_settings_t;
 
 typedef struct {
